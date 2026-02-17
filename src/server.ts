@@ -8,6 +8,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ✅ Declare a função ANTES de usar
+function requireAdmin(req, res, next) {
+  const token = req.header("x-admin-token"); // melhor que req.headers["x-admin-token"]
+  const adminToken = process.env.ADMIN_TOKEN;
+
+  if (!adminToken) {
+    console.error("ADMIN_TOKEN não definido no .env");
+    return res.status(500).json({ message: "Configuração do servidor ausente" });
+  }
+
+  if (!token || token !== adminToken) {
+    return res.status(401).json({ message: "Não autorizado" });
+  }
+
+  return next();
+}
+
+// Rotas públicas
 app.get("/", (req, res) => res.json({ message: "API Voucher SaaS rodando 🚀" }));
 
 app.get("/health", async (req, res) => {
@@ -20,8 +38,8 @@ app.get("/health", async (req, res) => {
   }
 });
 
-// Rotas admin (MVP sem auth ainda)
-app.use("/admin", adminRouter);
+// 🔒 Rotas admin protegidas (MVP)
+app.use("/admin", requireAdmin, adminRouter);
 
 // Rota do app (sem login)
 app.get("/vouchers/:agencyId/:reservationCode", async (req, res) => {
@@ -41,8 +59,8 @@ app.get("/vouchers/:agencyId/:reservationCode", async (req, res) => {
     if (!voucher) return res.status(404).json({ message: "Voucher não encontrado" });
 
     const flightsSorted = [...voucher.flights].sort((a, b) => {
-      const order = { OUTBOUND: 0, RETURN: 1 } as const;
-      return order[a.direction] - order[b.direction];
+      const order = { OUTBOUND: 0, RETURN: 1 };
+      return (order[a.direction] ?? 99) - (order[b.direction] ?? 99);
     });
 
     res.json({ ...voucher, flights: flightsSorted });
@@ -52,4 +70,5 @@ app.get("/vouchers/:agencyId/:reservationCode", async (req, res) => {
   }
 });
 
-app.listen(3333, () => console.log("Servidor rodando na porta 3333"));
+const PORT = Number(process.env.PORT) || 3333;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
