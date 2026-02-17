@@ -1,0 +1,37 @@
+{
+  "name": "voucher-api",
+  "version": "1.0.0",
+  "description": "Api do sistema de vouchers",
+  "homepage": "https://github.com/emersonnieto/vouchercard#readme",
+  "bugs": {
+    "url": "https://github.com/emersonnieto/vouchercard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emersonnieto/vouchercard.git"
+  },
+  "license": "ISC",
+  "author": "enb tech solutions",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.2.3",
+    "@types/pg": "^8.16.0",
+    "prisma": "^7.4.0",
+    "ts-node-dev": "^2.0.0"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "pg": "^8.18.0"
+  }
+}
