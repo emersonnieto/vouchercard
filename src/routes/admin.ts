@@ -13,6 +13,36 @@ function isUserRole(value: unknown): value is UserRole {
 }
 
 /**
+ * 🔒 Listar agências (somente SUPERADMIN)
+ * GET /admin/agencies
+ */
+adminRouter.get(
+  "/agencies",
+  requireRole(["SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencies = await prisma.agency.findMany({
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          email: true,
+          phone: true,
+          createdAt: true,
+        },
+      });
+
+      return res.json(agencies);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
+    }
+  }
+);
+
+
+/**
  * 🔒 Criar nova agência
  * Somente SUPERADMIN
  * POST /admin/agencies
