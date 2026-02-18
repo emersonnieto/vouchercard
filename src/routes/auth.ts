@@ -1,10 +1,12 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma";
-import { signJwt } from "../auth/jwt";
+import { signJwt, UserRole } from "../auth/jwt";
 import { requireAuth, AuthedRequest } from "../middlewares/requireAuth";
 
 export const authRouter = Router();
+
+const ALLOWED_ROLES: UserRole[] = ["SUPERADMIN", "ADMIN", "AGENCY"];
 
 /**
  * POST /auth/login
@@ -35,15 +37,17 @@ authRouter.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciais inválidas" });
     }
 
-    // role vem do banco como string (ADMIN, SUPERADMIN etc)
-    const role = user.role;
+    // ✅ valida role vindo do banco (string) -> UserRole
+    const roleFromDb = String(user.role).toUpperCase();
+    const role: UserRole = ALLOWED_ROLES.includes(roleFromDb as UserRole)
+      ? (roleFromDb as UserRole)
+      : "ADMIN";
 
-    // ⚠️ Se seu jwt.ts tipa role com union menor, o "as any" evita briga de TS.
-const token = signJwt({
-  userId: user.id,
-  agencyId: user.agencyId,
-  role: user.role as any, // pode manter assim se role for string no banco
-});
+    const token = signJwt({
+      userId: user.id,
+      agencyId: user.agencyId ?? null,
+      role,
+    });
 
     return res.json({
       token,
