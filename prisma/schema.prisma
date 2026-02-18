@@ -20,7 +20,7 @@ enum FlightDirection {
 model Agency {
   id        String   @id @default(uuid())
   name      String
-  slug      String   @unique
+  slug      String?   @unique
   phone     String?
   email     String?
   createdAt DateTime @default(now())

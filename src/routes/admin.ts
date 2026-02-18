@@ -3,29 +3,55 @@ import { prisma } from "../lib/prisma";
 
 export const adminRouter = Router();
 
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .replace(/[^a-z0-9]+/g, "-") // troca espaços/símbolos por -
+    .replace(/(^-|-$)+/g, ""); // remove - do começo/fim
+}
+
 /**
  * POST /admin/agencies
- * body: { name: string, phone?: string, email?: string }
+ * body: { name: string, phone?: string, email?: string, slug?: string }
  */
 adminRouter.post("/agencies", async (req, res) => {
   try {
-    const { name, phone, email } = req.body ?? {};
+    const { name, phone, email, slug } = req.body ?? {};
 
     if (!name || typeof name !== "string") {
       return res.status(400).json({ message: "name é obrigatório" });
     }
 
+    // se mandar slug no postman, usa; se não, gera pelo nome
+    const baseSlug = slug ? slugify(String(slug)) : slugify(name);
+    if (!baseSlug) {
+      return res.status(400).json({ message: "slug inválido" });
+    }
+
+    // garante unique (MVP)
+    const finalSlug = `${baseSlug}-${Date.now()}`;
+
     const agency = await prisma.agency.create({
       data: {
         name: name.trim(),
-        phone: phone?.toString(),
-        email: email?.toString(),
+        slug: finalSlug,
+        phone: phone ? String(phone) : null,
+        email: email ? String(email) : null,
       },
     });
 
     return res.status(201).json(agency);
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
+
+    // erro de unique
+    if (err?.code === "P2002") {
+      return res.status(409).json({ message: "Agência já existe (campo único duplicado)" });
+    }
+
     return res.status(500).json({ message: "Erro interno" });
   }
 });
@@ -71,7 +97,6 @@ adminRouter.post("/vouchers", async (req, res) => {
       return res.status(400).json({ message: "Inclua flights com direction OUTBOUND e RETURN" });
     }
 
-    // cria tudo em uma transação
     const created = await prisma.voucher.create({
       data: {
         agencyId,
@@ -113,7 +138,6 @@ adminRouter.post("/vouchers", async (req, res) => {
   } catch (err: any) {
     console.error(err);
 
-    // erro de unique (reservationCode por agency)
     if (err?.code === "P2002") {
       return res.status(409).json({ message: "reservationCode já existe para essa agência" });
     }
