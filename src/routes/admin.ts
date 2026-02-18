@@ -1,4 +1,4 @@
-import { Router, Response } from "express";
+import { Router, Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma";
 import { AuthedRequest } from "../middlewares/requireAuth";
@@ -6,9 +6,15 @@ import { requireRole } from "../middlewares/requireRole";
 
 export const adminRouter = Router();
 
+type UserRole = "SUPERADMIN" | "ADMIN";
+
+function isUserRole(value: unknown): value is UserRole {
+  return value === "SUPERADMIN" || value === "ADMIN";
+}
+
 /**
  * 🔒 Criar nova agência
- * Somente SUPERADMIN pode criar agência
+ * Somente SUPERADMIN
  * POST /admin/agencies
  * body: { name: string, slug: string, phone?: string, email?: string }
  */
@@ -17,12 +23,16 @@ adminRouter.post(
   requireRole(["SUPERADMIN"]),
   async (req: AuthedRequest, res: Response) => {
     try {
-      const { name, slug, phone, email } = req.body ?? {};
+      const { name, slug, phone, email } = (req.body ?? {}) as {
+        name?: unknown;
+        slug?: unknown;
+        phone?: unknown;
+        email?: unknown;
+      };
 
       if (!name || typeof name !== "string") {
         return res.status(400).json({ message: "name é obrigatório" });
       }
-
       if (!slug || typeof slug !== "string") {
         return res.status(400).json({ message: "slug é obrigatório" });
       }
@@ -33,6 +43,14 @@ adminRouter.post(
           slug: slug.trim(),
           phone: phone ? String(phone) : null,
           email: email ? String(email) : null,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          phone: true,
+          email: true,
+          createdAt: true,
         },
       });
 
@@ -52,38 +70,49 @@ adminRouter.post(
 /**
  * 🔒 SUPERADMIN cria o primeiro usuário de uma agência
  * POST /admin/agencies/:agencyId/users
- * body: { name: string, email: string, password: string, role?: string }
+ * body: { name: string, email: string, password: string, role?: "ADMIN" | "SUPERADMIN" }
+ *
+ * Obs: normalmente você criaria só ADMIN aqui, mas deixei flexível.
  */
 adminRouter.post(
   "/agencies/:agencyId/users",
   requireRole(["SUPERADMIN"]),
   async (req: AuthedRequest, res: Response) => {
     try {
-      const agencyId = String(req.params.agencyId);
-      const { name, email, password, role } = req.body ?? {};
+      const agencyId = String(req.params.agencyId || "").trim();
+      const { name, email, password, role } = (req.body ?? {}) as {
+        name?: unknown;
+        email?: unknown;
+        password?: unknown;
+        role?: unknown;
+      };
 
       if (!agencyId) {
         return res.status(400).json({ message: "agencyId inválido" });
       }
-
       if (!name || typeof name !== "string") {
         return res.status(400).json({ message: "name é obrigatório" });
       }
-
       if (!email || typeof email !== "string") {
         return res.status(400).json({ message: "email é obrigatório" });
       }
-
       if (!password || typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "password é obrigatório (mín 6)" });
       }
 
-      const agency = await prisma.agency.findUnique({ where: { id: agencyId } });
+      const agency = await prisma.agency.findUnique({
+        where: { id: agencyId },
+        select: { id: true },
+      });
+
       if (!agency) {
         return res.status(404).json({ message: "Agência não encontrada" });
       }
 
       const passwordHash = await bcrypt.hash(password, 10);
+
+      // role opcional (default ADMIN)
+      const finalRole: UserRole = isUserRole(role) ? role : "ADMIN";
 
       const user = await prisma.user.create({
         data: {
@@ -91,7 +120,7 @@ adminRouter.post(
           name: name.trim(),
           email: email.trim().toLowerCase(),
           passwordHash,
-          role: role && typeof role === "string" ? role : "ADMIN",
+          role: finalRole,
         },
         select: {
           id: true,
@@ -117,7 +146,7 @@ adminRouter.post(
 );
 
 /**
- * 🔒 Criar voucher (AGÊNCIA/ADMIN e SUPERADMIN)
+ * 🔒 Criar voucher (ADMIN e SUPERADMIN)
  * agencyId SEMPRE vem do token (não do body)
  * POST /admin/vouchers
  */
@@ -126,7 +155,7 @@ adminRouter.post(
   requireRole(["ADMIN", "SUPERADMIN"]),
   async (req: AuthedRequest, res: Response) => {
     try {
-      const agencyId = req.user?.agencyId;
+      const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
 
       if (!agencyId) {
         return res.status(400).json({
@@ -134,16 +163,14 @@ adminRouter.post(
         });
       }
 
-      const { reservationCode, clientName, flights, hotel, transfer } = req.body ?? {};
+      const { reservationCode, clientName, flights, hotel, transfer } = (req.body ?? {}) as any;
 
       if (!reservationCode || typeof reservationCode !== "string") {
         return res.status(400).json({ message: "reservationCode é obrigatório" });
       }
-
       if (!clientName || typeof clientName !== "string") {
         return res.status(400).json({ message: "clientName é obrigatório" });
       }
-
       if (!Array.isArray(flights) || flights.length < 1) {
         return res.status(400).json({ message: "flights é obrigatório" });
       }
@@ -159,7 +186,7 @@ adminRouter.post(
 
       const created = await prisma.voucher.create({
         data: {
-          agencyId: String(agencyId),
+          agencyId,
           reservationCode: reservationCode.trim(),
           clientName: clientName.trim(),
           flights: {
@@ -218,7 +245,7 @@ adminRouter.get(
   requireRole(["ADMIN", "SUPERADMIN"]),
   async (req: AuthedRequest, res: Response) => {
     try {
-      const agencyId = req.user?.agencyId;
+      const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
 
       if (!agencyId) {
         return res.status(400).json({
@@ -227,7 +254,7 @@ adminRouter.get(
       }
 
       const vouchers = await prisma.voucher.findMany({
-        where: { agencyId: String(agencyId) },
+        where: { agencyId },
         orderBy: { createdAt: "desc" },
       });
 
