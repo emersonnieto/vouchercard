@@ -345,4 +345,51 @@ adminRouter.get(
       return res.status(500).json({ message: "Erro interno" });
     }
   }
+  
+);
+
+/**
+ * 🔒 Detalhe de um voucher da própria agência
+ * GET /admin/vouchers/:id
+ */
+adminRouter.get(
+  "/vouchers/:id",
+  requireRole(["ADMIN", "SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
+      const id = String(req.params.id || "").trim();
+
+      if (!agencyId) {
+        return res.status(400).json({
+          message: "Seu usuário não possui agencyId vinculado.",
+        });
+      }
+
+      if (!id) {
+        return res.status(400).json({ message: "ID inválido" });
+      }
+
+      const voucher = await prisma.voucher.findFirst({
+        where: {
+          id,
+          agencyId, // 🔒 garante que só acessa da própria agência
+        },
+        include: {
+          flights: true,
+          hotel: true,
+          transfer: true,
+        },
+      });
+
+      if (!voucher) {
+        return res.status(404).json({ message: "Voucher não encontrado" });
+      }
+
+      return res.json(voucher);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
+    }
+  }
 );
