@@ -13,6 +13,57 @@ function isUserRole(value: unknown): value is UserRole {
 }
 
 /**
+ * 🔒 Me (dados do usuário logado + agência)
+ * GET /admin/me
+ * Roles: ADMIN | AGENCY | SUPERADMIN
+ */
+adminRouter.get("/me", async (req: AuthedRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Não autorizado" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        agencyId: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const agency = user.agencyId
+      ? await prisma.agency.findUnique({
+          where: { id: user.agencyId },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            phone: true,
+            email: true,
+            createdAt: true,
+          },
+        })
+      : null;
+
+    return res.json({ user, agency });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+});
+
+
+/**
  * 🔒 Listar agências (somente SUPERADMIN)
  * GET /admin/agencies
  */
