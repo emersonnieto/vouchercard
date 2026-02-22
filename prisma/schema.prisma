@@ -23,6 +23,8 @@ model Agency {
   slug      String   @unique
   phone     String?
   email     String?
+  logoUrl   String?   // ✅ NOVO
+  primaryColor String? // ✅ NOVO (ex: "#6d28d9")
   createdAt DateTime @default(now())
 
   vouchers  Voucher[]
@@ -42,19 +44,17 @@ model User {
 }
 
 model Voucher {
-  id             String       @id @default(uuid())
-  agencyId        String
-  reservationCode String
-  clientName      String
-  status          VoucherStatus @default(ACTIVE)
-  createdAt       DateTime     @default(now())
+  id              String        @id @default(uuid())
+  agencyId         String
+  reservationCode  String        @unique   // ✅ agora é único global
+  clientName       String
+  status           VoucherStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now())
 
-  agency   Agency    @relation(fields: [agencyId], references: [id])
+  agency   Agency  @relation(fields: [agencyId], references: [id])
   flights  Flight[]
   hotel    Hotel?
   transfer Transfer?
-
-  @@unique([agencyId, reservationCode]) // código único por agência
 }
 
 model Flight {
