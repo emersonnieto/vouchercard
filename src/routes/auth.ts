@@ -26,6 +26,15 @@ authRouter.post("/login", async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email: email.trim().toLowerCase() },
+      select: {
+        id: true,
+        agencyId: true,
+        name: true,
+        email: true,
+        role: true,
+        passwordHash: true,
+        createdAt: true,
+      },
     });
 
     if (!user) {
@@ -37,11 +46,31 @@ authRouter.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciais inválidas" });
     }
 
-    // ✅ valida role vindo do banco (string) -> UserRole
+    // ✅ bloqueio: se agência estiver inativa, não deixa logar (exceto SUPERADMIN)
     const roleFromDb = String(user.role).toUpperCase();
     const role: UserRole = ALLOWED_ROLES.includes(roleFromDb as UserRole)
       ? (roleFromDb as UserRole)
       : "ADMIN";
+
+    if (role !== "SUPERADMIN") {
+      const agencyId = user.agencyId ? String(user.agencyId) : "";
+      if (!agencyId) {
+        return res.status(403).json({
+          message: "Usuário sem agência vinculada. Contate o suporte.",
+        });
+      }
+
+      const agency = await prisma.agency.findUnique({
+        where: { id: agencyId },
+        select: { isActive: true },
+      });
+
+      if (!agency?.isActive) {
+        return res.status(403).json({
+          message: "Agência inativa. Contate o suporte.",
+        });
+      }
+    }
 
     const token = signJwt({
       userId: user.id,
@@ -71,43 +100,59 @@ authRouter.post("/login", async (req, res) => {
  * Header: Authorization: Bearer <token>
  * body: { currentPassword: string, newPassword: string }
  */
-authRouter.post("/change-password", requireAuth, async (req: AuthedRequest, res) => {
-  try {
-    const userId = req.user?.userId;
-    if (!userId) {
-      return res.status(401).json({ message: "Não autorizado" });
+authRouter.post(
+  "/change-password",
+  requireAuth,
+  async (req: AuthedRequest, res) => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "Não autorizado" });
+      }
+
+      const { currentPassword, newPassword } = req.body ?? {};
+
+      if (!currentPassword || typeof currentPassword !== "string") {
+        return res
+          .status(400)
+          .json({ message: "currentPassword é obrigatório" });
+      }
+
+      if (
+        !newPassword ||
+        typeof newPassword !== "string" ||
+        newPassword.length < 6
+      ) {
+        return res
+          .status(400)
+          .json({ message: "newPassword é obrigatório (mín 6)" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, passwordHash: true },
+      });
+
+      if (!user) {
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      }
+
+      const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!ok) {
+        return res.status(401).json({ message: "Senha atual incorreta" });
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
+
+      return res.json({ message: "Senha atualizada com sucesso" });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ message: "Erro interno" });
     }
-
-    const { currentPassword, newPassword } = req.body ?? {};
-
-    if (!currentPassword || typeof currentPassword !== "string") {
-      return res.status(400).json({ message: "currentPassword é obrigatório" });
-    }
-
-    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
-      return res.status(400).json({ message: "newPassword é obrigatório (mín 6)" });
-    }
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    }
-
-    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!ok) {
-      return res.status(401).json({ message: "Senha atual incorreta" });
-    }
-
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash },
-    });
-
-    return res.json({ message: "Senha atualizada com sucesso" });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ message: "Erro interno" });
   }
-});
+);

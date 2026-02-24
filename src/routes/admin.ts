@@ -26,12 +26,18 @@ function sortFlights<T extends { direction: string }>(flights: T[]) {
 adminRouter.get("/me", async (req: AuthedRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
-
     if (!userId) return res.status(401).json({ message: "Não autorizado" });
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, agencyId: true, name: true, email: true, role: true, createdAt: true },
+      select: {
+        id: true,
+        agencyId: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
     });
 
     if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
@@ -46,6 +52,9 @@ adminRouter.get("/me", async (req: AuthedRequest, res: Response) => {
             phone: true,
             email: true,
             createdAt: true,
+            isActive: true,
+            logoUrl: true,
+            primaryColor: true,
           },
         })
       : null;
@@ -61,56 +70,184 @@ adminRouter.get("/me", async (req: AuthedRequest, res: Response) => {
  * 🔒 Listar agências (somente SUPERADMIN)
  * GET /admin/agencies
  */
-adminRouter.get("/agencies", requireRole(["SUPERADMIN"]), async (req: AuthedRequest, res: Response) => {
-  try {
-    const agencies = await prisma.agency.findMany({
-      orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, slug: true, email: true, phone: true, createdAt: true },
-    });
+adminRouter.get(
+  "/agencies",
+  requireRole(["SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencies = await prisma.agency.findMany({
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          email: true,
+          phone: true,
+          createdAt: true,
+          isActive: true,
+          logoUrl: true,
+          primaryColor: true,
+        },
+      });
 
-    return res.json(agencies);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Erro interno" });
+      return res.json(agencies);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
+    }
   }
-});
+);
 
 /**
  * 🔒 Criar nova agência (SUPERADMIN)
  * POST /admin/agencies
  */
-adminRouter.post("/agencies", requireRole(["SUPERADMIN"]), async (req: AuthedRequest, res: Response) => {
-  try {
-    const { name, slug, phone, email } = (req.body ?? {}) as {
-      name?: unknown;
-      slug?: unknown;
-      phone?: unknown;
-      email?: unknown;
-    };
+adminRouter.post(
+  "/agencies",
+  requireRole(["SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const { name, slug, phone, email } = (req.body ?? {}) as {
+        name?: unknown;
+        slug?: unknown;
+        phone?: unknown;
+        email?: unknown;
+      };
 
-    if (!name || typeof name !== "string") return res.status(400).json({ message: "name é obrigatório" });
-    if (!slug || typeof slug !== "string") return res.status(400).json({ message: "slug é obrigatório" });
+      if (!name || typeof name !== "string")
+        return res.status(400).json({ message: "name é obrigatório" });
+      if (!slug || typeof slug !== "string")
+        return res.status(400).json({ message: "slug é obrigatório" });
 
-    const agency = await prisma.agency.create({
-      data: {
-        name: name.trim(),
-        slug: slug.trim().toLowerCase(),
-        phone: phone ? String(phone) : null,
-        email: email ? String(email) : null,
-      },
-      select: { id: true, name: true, slug: true, phone: true, email: true, createdAt: true },
-    });
+      const agency = await prisma.agency.create({
+        data: {
+          name: name.trim(),
+          slug: slug.trim().toLowerCase(),
+          phone: phone ? String(phone) : null,
+          email: email ? String(email) : null,
+          // isActive default true
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          phone: true,
+          email: true,
+          createdAt: true,
+          isActive: true,
+          logoUrl: true,
+          primaryColor: true,
+        },
+      });
 
-    return res.status(201).json(agency);
-  } catch (err: any) {
-    console.error(err);
-    if (err?.code === "P2002") return res.status(409).json({ message: "Slug já existe" });
-    return res.status(500).json({ message: "Erro interno" });
+      return res.status(201).json(agency);
+    } catch (err: any) {
+      console.error(err);
+      if (err?.code === "P2002")
+        return res.status(409).json({ message: "Slug já existe" });
+      return res.status(500).json({ message: "Erro interno" });
+    }
   }
-});
+);
 
 /**
- * 🔒 SUPERADMIN cria o primeiro usuário de uma agência
+ * 🔒 Atualizar status da agência (ativa/inativa) - SUPERADMIN
+ * PATCH /admin/agencies/:agencyId/status
+ * body: { isActive: boolean }
+ */
+adminRouter.patch(
+  "/agencies/:agencyId/status",
+  requireRole(["SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencyId = String(req.params.agencyId || "").trim();
+      const { isActive } = (req.body ?? {}) as { isActive?: unknown };
+
+      if (!agencyId) return res.status(400).json({ message: "agencyId inválido" });
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ message: "isActive deve ser boolean" });
+      }
+
+      const updated = await prisma.agency.update({
+        where: { id: agencyId },
+        data: { isActive },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          email: true,
+          phone: true,
+          createdAt: true,
+          isActive: true,
+          logoUrl: true,
+          primaryColor: true,
+        },
+      });
+
+      return res.json(updated);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
+    }
+  }
+);
+
+/**
+ * 🔒 Atualizar branding da agência - SUPERADMIN
+ * PATCH /admin/agencies/:agencyId/branding
+ * body: { logoUrl?: string | null, primaryColor?: string | null }
+ */
+adminRouter.patch(
+  "/agencies/:agencyId/branding",
+  requireRole(["SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencyId = String(req.params.agencyId || "").trim();
+      const { logoUrl, primaryColor } = (req.body ?? {}) as {
+        logoUrl?: unknown;
+        primaryColor?: unknown;
+      };
+
+      if (!agencyId) return res.status(400).json({ message: "agencyId inválido" });
+
+      const logoUrlFinal =
+        logoUrl === undefined ? undefined : logoUrl === null ? null : String(logoUrl);
+      const primaryColorFinal =
+        primaryColor === undefined
+          ? undefined
+          : primaryColor === null
+          ? null
+          : String(primaryColor);
+
+      const updated = await prisma.agency.update({
+        where: { id: agencyId },
+        data: {
+          logoUrl: logoUrlFinal,
+          primaryColor: primaryColorFinal,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          email: true,
+          phone: true,
+          createdAt: true,
+          isActive: true,
+          logoUrl: true,
+          primaryColor: true,
+        },
+      });
+
+      return res.json(updated);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
+    }
+  }
+);
+
+/**
+ * 🔒 SUPERADMIN cria usuário de uma agência
  * POST /admin/agencies/:agencyId/users
  */
 adminRouter.post(
@@ -127,13 +264,18 @@ adminRouter.post(
       };
 
       if (!agencyId) return res.status(400).json({ message: "agencyId inválido" });
-      if (!name || typeof name !== "string") return res.status(400).json({ message: "name é obrigatório" });
-      if (!email || typeof email !== "string") return res.status(400).json({ message: "email é obrigatório" });
+      if (!name || typeof name !== "string")
+        return res.status(400).json({ message: "name é obrigatório" });
+      if (!email || typeof email !== "string")
+        return res.status(400).json({ message: "email é obrigatório" });
       if (!password || typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "password é obrigatório (mín 6)" });
       }
 
-      const agency = await prisma.agency.findUnique({ where: { id: agencyId }, select: { id: true } });
+      const agency = await prisma.agency.findUnique({
+        where: { id: agencyId },
+        select: { id: true },
+      });
       if (!agency) return res.status(404).json({ message: "Agência não encontrada" });
 
       const passwordHash = await bcrypt.hash(password, 10);
@@ -147,13 +289,21 @@ adminRouter.post(
           passwordHash,
           role: finalRole,
         },
-        select: { id: true, agencyId: true, name: true, email: true, role: true, createdAt: true },
+        select: {
+          id: true,
+          agencyId: true,
+          name: true,
+          email: true,
+          role: true,
+          createdAt: true,
+        },
       });
 
       return res.status(201).json(user);
     } catch (err: any) {
       console.error(err);
-      if (err?.code === "P2002") return res.status(409).json({ message: "Email já existe" });
+      if (err?.code === "P2002")
+        return res.status(409).json({ message: "Email já existe" });
       return res.status(500).json({ message: "Erro interno" });
     }
   }
@@ -163,124 +313,150 @@ adminRouter.post(
  * 🔒 Criar voucher (ADMIN e SUPERADMIN)
  * POST /admin/vouchers
  */
-adminRouter.post("/vouchers", requireRole(["ADMIN", "SUPERADMIN"]), async (req: AuthedRequest, res: Response) => {
-  try {
-    const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
-    if (!agencyId) {
-      return res.status(400).json({
-        message: "Seu usuário não possui agencyId vinculado. Contate o suporte.",
-      });
-    }
+adminRouter.post(
+  "/vouchers",
+  requireRole(["ADMIN", "SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
+      if (!agencyId) {
+        return res.status(400).json({
+          message: "Seu usuário não possui agencyId vinculado. Contate o suporte.",
+        });
+      }
 
-    const { reservationCode, clientName, flights, hotel, transfer } = (req.body ?? {}) as any;
+      const { reservationCode, clientName, flights, hotel, transfer } = (req.body ?? {}) as any;
 
-    if (!reservationCode || typeof reservationCode !== "string") {
-      return res.status(400).json({ message: "reservationCode é obrigatório" });
-    }
-    if (!clientName || typeof clientName !== "string") {
-      return res.status(400).json({ message: "clientName é obrigatório" });
-    }
-    if (!Array.isArray(flights) || flights.length < 1) {
-      return res.status(400).json({ message: "flights é obrigatório" });
-    }
+      if (!reservationCode || typeof reservationCode !== "string")
+        return res.status(400).json({ message: "reservationCode é obrigatório" });
+      if (!clientName || typeof clientName !== "string")
+        return res.status(400).json({ message: "clientName é obrigatório" });
+      if (!Array.isArray(flights) || flights.length < 1)
+        return res.status(400).json({ message: "flights é obrigatório" });
 
-    const hasOutbound = flights.some((f: any) => f?.direction === "OUTBOUND");
-    const hasReturn = flights.some((f: any) => f?.direction === "RETURN");
-    if (!hasOutbound || !hasReturn) {
-      return res.status(400).json({ message: "Inclua flights com direction OUTBOUND e RETURN" });
-    }
+      const hasOutbound = flights.some((f: any) => f?.direction === "OUTBOUND");
+      const hasReturn = flights.some((f: any) => f?.direction === "RETURN");
+      if (!hasOutbound || !hasReturn) {
+        return res
+          .status(400)
+          .json({ message: "Inclua flights com direction OUTBOUND e RETURN" });
+      }
 
-    const created = await prisma.voucher.create({
-      data: {
-        agencyId,
-        reservationCode: reservationCode.trim(),
-        clientName: clientName.trim(),
-        flights: {
-          create: flights.map((f: any) => ({
-            direction: f.direction,
-            flightNumber: f.flightNumber?.toString(),
-            departureTime: f.departureTime?.toString(),
-            arrivalTime: f.arrivalTime?.toString(),
-            embarkAirport: f.embarkAirport?.toString(),
-            disembarkAirport: f.disembarkAirport?.toString(),
-          })),
+      const created = await prisma.voucher.create({
+        data: {
+          agencyId,
+          reservationCode: reservationCode.trim(),
+          clientName: clientName.trim(),
+          flights: {
+            create: flights.map((f: any) => ({
+              direction: f.direction,
+              flightNumber: f.flightNumber?.toString(),
+              departureTime: f.departureTime?.toString(),
+              arrivalTime: f.arrivalTime?.toString(),
+              embarkAirport: f.embarkAirport?.toString(),
+              disembarkAirport: f.disembarkAirport?.toString(),
+            })),
+          },
+          hotel: hotel
+            ? {
+                create: {
+                  hotelName: hotel.hotelName?.toString() ?? "",
+                  mealPlan: hotel.mealPlan?.toString(),
+                  roomType: hotel.roomType?.toString(),
+                  checkInTime: hotel.checkInTime?.toString(),
+                  checkOutTime: hotel.checkOutTime?.toString(),
+                },
+              }
+            : undefined,
+          transfer: transfer
+            ? { create: { receptiveName: transfer.receptiveName?.toString() } }
+            : undefined,
         },
-        hotel: hotel
-          ? {
-              create: {
-                hotelName: hotel.hotelName?.toString() ?? "",
-                mealPlan: hotel.mealPlan?.toString(),
-                roomType: hotel.roomType?.toString(),
-                checkInTime: hotel.checkInTime?.toString(),
-                checkOutTime: hotel.checkOutTime?.toString(),
-              },
-            }
-          : undefined,
-        transfer: transfer
-          ? { create: { receptiveName: transfer.receptiveName?.toString() } }
-          : undefined,
-      },
-      include: {
-        flights: true,
-        hotel: true,
-        transfer: true,
-        agency: { select: { id: true, name: true, slug: true, phone: true, email: true } }, // ✅ útil
-      },
-    });
+        include: {
+          flights: true,
+          hotel: true,
+          transfer: true,
+          agency: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              phone: true,
+              email: true,
+              isActive: true,
+              logoUrl: true,
+              primaryColor: true,
+            },
+          },
+        },
+      });
 
-    return res.status(201).json({ ...created, flights: sortFlights(created.flights) });
-  } catch (err: any) {
-    console.error(err);
-    if (err?.code === "P2002") return res.status(409).json({ message: "reservationCode já existe" });
-    return res.status(500).json({ message: "Erro interno" });
+      return res.status(201).json({ ...created, flights: sortFlights(created.flights) });
+    } catch (err: any) {
+      console.error(err);
+      if (err?.code === "P2002")
+        return res.status(409).json({ message: "reservationCode já existe" });
+      return res.status(500).json({ message: "Erro interno" });
+    }
   }
-});
+);
 
 /**
  * 🔒 Listar vouchers da própria agência
  * GET /admin/vouchers
  */
-adminRouter.get("/vouchers", requireRole(["ADMIN", "SUPERADMIN"]), async (req: AuthedRequest, res: Response) => {
-  try {
-    const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
-    if (!agencyId) {
-      return res.status(400).json({ message: "Seu usuário não possui agencyId vinculado. Contate o suporte." });
+adminRouter.get(
+  "/vouchers",
+  requireRole(["ADMIN", "SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
+      if (!agencyId) {
+        return res.status(400).json({
+          message: "Seu usuário não possui agencyId vinculado. Contate o suporte.",
+        });
+      }
+
+      const vouchers = await prisma.voucher.findMany({
+        where: { agencyId },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return res.json(vouchers);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
     }
-
-    const vouchers = await prisma.voucher.findMany({
-      where: { agencyId },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return res.json(vouchers);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Erro interno" });
   }
-});
+);
 
 /**
  * 🔒 Detalhe de um voucher da própria agência
  * GET /admin/vouchers/:id
  */
-adminRouter.get("/vouchers/:id", requireRole(["ADMIN", "SUPERADMIN"]), async (req: AuthedRequest, res: Response) => {
-  try {
-    const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
-    const id = String(req.params.id || "").trim();
+adminRouter.get(
+  "/vouchers/:id",
+  requireRole(["ADMIN", "SUPERADMIN"]),
+  async (req: AuthedRequest, res: Response) => {
+    try {
+      const agencyId = req.user?.agencyId ? String(req.user.agencyId) : "";
+      const id = String(req.params.id || "").trim();
 
-    if (!agencyId) return res.status(400).json({ message: "Seu usuário não possui agencyId vinculado." });
-    if (!id) return res.status(400).json({ message: "ID inválido" });
+      if (!agencyId)
+        return res.status(400).json({ message: "Seu usuário não possui agencyId vinculado." });
+      if (!id) return res.status(400).json({ message: "ID inválido" });
 
-    const voucher = await prisma.voucher.findFirst({
-      where: { id, agencyId },
-      include: { flights: true, hotel: true, transfer: true },
-    });
+      const voucher = await prisma.voucher.findFirst({
+        where: { id, agencyId },
+        include: { flights: true, hotel: true, transfer: true },
+      });
 
-    if (!voucher) return res.status(404).json({ message: "Voucher não encontrado" });
+      if (!voucher) return res.status(404).json({ message: "Voucher não encontrado" });
 
-    return res.json({ ...voucher, flights: sortFlights(voucher.flights) });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Erro interno" });
+      return res.json({ ...voucher, flights: sortFlights(voucher.flights) });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erro interno" });
+    }
   }
-});
+);
