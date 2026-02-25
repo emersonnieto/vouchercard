@@ -31,6 +31,9 @@ publicRouter.get("/debug", async (_req: Request, res: Response) => {
 /**
  * 🌍 Público (APP): buscar voucher por reservationCode
  * GET /public/vouchers/:reservationCode
+ *
+ * ✅ Busca case-insensitive (resolve problema de maiúsculo/minúsculo)
+ * ✅ Ordena voos (OUTBOUND primeiro, RETURN depois)
  */
 publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Response) => {
   try {
@@ -40,8 +43,13 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
       return res.status(400).json({ message: "reservationCode inválido" });
     }
 
-    const voucher = await prisma.voucher.findUnique({
-      where: { reservationCode },
+    const voucher = await prisma.voucher.findFirst({
+      where: {
+        reservationCode: {
+          equals: reservationCode,
+          mode: "insensitive", // 🔥 resolve diferença de maiúsculo/minúsculo
+        },
+      },
       include: {
         flights: true,
         hotel: true,
@@ -55,6 +63,7 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
             email: true,
             logoUrl: true,
             primaryColor: true,
+            isActive: true,
           },
         },
       },
@@ -64,7 +73,12 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
       return res.status(404).json({ message: "Voucher não encontrado" });
     }
 
-    // ✅ Ordena voos: OUTBOUND primeiro, RETURN depois
+    // (opcional) bloquear agência inativa
+    if (voucher.agency?.isActive === false) {
+      return res.status(404).json({ message: "Voucher não encontrado" });
+    }
+
+    // ✅ Ordena voos
     const order: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
     const flightsSorted = [...voucher.flights].sort(
       (a, b) => (order[a.direction] ?? 99) - (order[b.direction] ?? 99)
@@ -72,7 +86,7 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
 
     return res.json({ ...voucher, flights: flightsSorted });
   } catch (err) {
-    console.error(err);
+    console.error("[PUBLIC] erro:", err);
     return res.status(500).json({ message: "Erro interno" });
   }
 });
