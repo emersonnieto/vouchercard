@@ -28,9 +28,8 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
             slug: true,
             phone: true,
             email: true,
-            // futuramente:
-            // logoUrl: true,
-            // primaryColor: true,
+            logoUrl: true,
+            primaryColor: true,
           },
         },
       },
