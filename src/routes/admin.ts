@@ -19,12 +19,6 @@ function sortFlights<T extends { direction: string }>(flights: T[]) {
   );
 }
 
-function cleanText(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  const text = String(value).trim();
-  return text ? text : null;
-}
-
 /**
  * 🔒 Me (dados do usuário logado + agência)
  * GET /admin/me
@@ -331,16 +325,7 @@ adminRouter.post(
         });
       }
 
-      const {
-        reservationCode,
-        clientName,
-        flights,
-        hotel,
-        transfer,
-        stopover,
-        tours,
-        travelInsurance,
-      } = (req.body ?? {}) as any;
+      const { reservationCode, clientName, flights, hotel, transfer } = (req.body ?? {}) as any;
 
       if (!reservationCode || typeof reservationCode !== "string")
         return res.status(400).json({ message: "reservationCode é obrigatório" });
@@ -355,20 +340,6 @@ adminRouter.post(
         return res
           .status(400)
           .json({ message: "Inclua flights com direction OUTBOUND e RETURN" });
-      }
-
-      const toursInput = Array.isArray(tours) ? tours : [];
-      const toursWithMissingName = toursInput.some(
-        (tour: any) => !cleanText(tour?.name)
-      );
-      if (toursWithMissingName) {
-        return res.status(400).json({ message: "Cada passeio precisa ter um nome." });
-      }
-
-      if (travelInsurance && !cleanText(travelInsurance.providerName)) {
-        return res
-          .status(400)
-          .json({ message: "providerName do seguro viagem é obrigatório." });
       }
 
       const created = await prisma.voucher.create({
@@ -398,44 +369,13 @@ adminRouter.post(
               }
             : undefined,
           transfer: transfer
-            ? { create: { receptiveName: cleanText(transfer.receptiveName) } }
-            : undefined,
-          stopover: stopover
-            ? {
-                create: {
-                  location: cleanText(stopover.location),
-                  duration: cleanText(stopover.duration),
-                  additionalNotes: cleanText(stopover.additionalNotes),
-                },
-              }
-            : undefined,
-          tours: toursInput.length
-            ? {
-                create: toursInput.map((tour: any) => ({
-                  name: String(tour.name).trim(),
-                  dateTime: cleanText(tour.dateTime),
-                  meetingPoint: cleanText(tour.meetingPoint),
-                  additionalNotes: cleanText(tour.additionalNotes),
-                })),
-              }
-            : undefined,
-          travelInsurance: travelInsurance
-            ? {
-                create: {
-                  providerName: String(travelInsurance.providerName).trim(),
-                  providerPhone: cleanText(travelInsurance.providerPhone),
-                  additionalNotes: cleanText(travelInsurance.additionalNotes),
-                },
-              }
+            ? { create: { receptiveName: transfer.receptiveName?.toString() } }
             : undefined,
         },
         include: {
           flights: true,
           hotel: true,
           transfer: true,
-          stopover: true,
-          tours: true,
-          travelInsurance: true,
           agency: {
             select: {
               id: true,
@@ -508,14 +448,7 @@ adminRouter.get(
 
       const voucher = await prisma.voucher.findFirst({
         where: { id, agencyId },
-        include: {
-          flights: true,
-          hotel: true,
-          transfer: true,
-          stopover: true,
-          tours: true,
-          travelInsurance: true,
-        },
+        include: { flights: true, hotel: true, transfer: true },
       });
 
       if (!voucher) return res.status(404).json({ message: "Voucher não encontrado" });

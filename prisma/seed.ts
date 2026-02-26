@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("DATABASE_URL nao definida no .env");
+if (!databaseUrl) throw new Error("DATABASE_URL não definida no .env");
 
 const pool = new Pool({
   connectionString: databaseUrl,
@@ -16,8 +16,7 @@ const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 async function main() {
   const agency = await prisma.agency.create({
     data: {
-      name: "Agencia Teste",
-      slug: "agencia-teste",
+      name: "Agência Teste",
       phone: "11999999999",
       email: "agencia@teste.com",
     },
@@ -51,7 +50,7 @@ async function main() {
       hotel: {
         create: {
           hotelName: "Hotel Exemplo",
-          mealPlan: "Cafe da manha",
+          mealPlan: "Café da manhã",
           roomType: "Standard",
           checkInTime: "14:00",
           checkOutTime: "12:00",
@@ -62,31 +61,10 @@ async function main() {
           receptiveName: "Receptivo Exemplo",
         },
       },
-      stopover: {
-        create: {
-          location: "Brasilia",
-          duration: "1h15",
-        },
-      },
-      tours: {
-        create: [
-          {
-            name: "City Tour",
-            dateTime: "09:00",
-            meetingPoint: "Lobby do hotel",
-          },
-        ],
-      },
-      travelInsurance: {
-        create: {
-          providerName: "Seguradora Exemplo",
-          providerPhone: "0800 000 000",
-        },
-      },
     },
   });
 
-  console.log("Seed OK");
+  console.log("✅ Seed OK");
   console.log("AGENCY_ID:", agency.id);
   console.log("RESERVA:", voucher.reservationCode);
 }

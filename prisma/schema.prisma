@@ -18,18 +18,19 @@ enum FlightDirection {
 }
 
 model Agency {
-  id           String   @id @default(uuid())
-  name         String
-  slug         String   @unique
-  phone        String?
-  email        String?
-  createdAt    DateTime @default(now())
-  isActive     Boolean  @default(true)
-  logoUrl      String?
-  primaryColor String?
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now())
 
-  vouchers Voucher[]
-  users    User[]
+  isActive  Boolean  @default(true) // ✅ NOVO
+  logoUrl   String?               // ✅ (já aproveita)
+  primaryColor String?            // ✅ opcional
+
+  vouchers  Voucher[]
+  users     User[]
 }
 
 model User {
@@ -45,29 +46,29 @@ model User {
 }
 
 model Voucher {
-  id                String        @id @default(uuid())
-  agencyId          String
-  reservationCode   String        @unique
-  clientName        String
-  status            VoucherStatus @default(ACTIVE)
-  createdAt         DateTime      @default(now())
-  agency            Agency        @relation(fields: [agencyId], references: [id])
-  flights           Flight[]
-  hotel             Hotel?
-  transfer          Transfer?
-  stopover          Stopover?
-  tours             Tour[]
-  travelInsurance   TravelInsurance?
+  id              String        @id @default(uuid())
+  agencyId         String
+  reservationCode  String        @unique   // ✅ agora é único global
+  clientName       String
+  status           VoucherStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now())
+
+  agency   Agency  @relation(fields: [agencyId], references: [id])
+  flights  Flight[]
+  hotel    Hotel?
+  transfer Transfer?
 }
 
 model Flight {
-  id               String          @id @default(uuid())
-  voucherId        String
-  direction        FlightDirection @default(OUTBOUND)
-  flightNumber     String?
-  departureTime    String?
-  arrivalTime      String?
-  embarkAirport    String?
+  id             String          @id @default(uuid())
+  voucherId       String
+  direction       FlightDirection @default(OUTBOUND)
+
+  flightNumber    String?
+  // MVP: só horário, sem data (ex: "14:00")
+  departureTime   String?
+  arrivalTime     String?
+  embarkAirport   String?
   disembarkAirport String?
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
@@ -76,13 +77,14 @@ model Flight {
 }
 
 model Hotel {
-  id           String @id @default(uuid())
-  voucherId    String @unique
-  hotelName    String
-  mealPlan     String?
-  roomType     String?
-  checkInTime  String?
-  checkOutTime String?
+  id          String  @id @default(uuid())
+  voucherId   String  @unique
+
+  hotelName   String
+  mealPlan    String? // Regime de alimentação
+  roomType    String? // Tipo apartamento
+  checkInTime String? // ex: "14:00"
+  checkOutTime String? // ex: "12:00"
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
@@ -90,40 +92,8 @@ model Hotel {
 model Transfer {
   id            String @id @default(uuid())
   voucherId     String @unique
-  receptiveName String?
 
-  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-}
-
-model Stopover {
-  id              String @id @default(uuid())
-  voucherId        String @unique
-  location         String?
-  duration         String?
-  additionalNotes  String?
-
-  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-}
-
-model Tour {
-  id              String @id @default(uuid())
-  voucherId        String
-  name            String
-  dateTime        String?
-  meetingPoint    String?
-  additionalNotes String?
-
-  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-
-  @@index([voucherId])
-}
-
-model TravelInsurance {
-  id              String @id @default(uuid())
-  voucherId        String @unique
-  providerName    String
-  providerPhone   String?
-  additionalNotes String?
+  receptiveName String? // Nome receptivo
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
