@@ -54,6 +54,9 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
         flights: true,
         hotel: true,
         transfer: true,
+        stopover: true,
+        tours: true,
+        travelInsurance: true,
         agency: {
           select: {
             id: true,
