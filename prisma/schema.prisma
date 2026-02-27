@@ -66,6 +66,7 @@ model Flight {
   segmentOrder    Int             @default(0)
 
   flightNumber    String?
+  flightDate      String?
   // MVP: só horário, sem data (ex: "14:00")
   departureTime   String?
   arrivalTime     String?
