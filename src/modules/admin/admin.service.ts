@@ -159,23 +159,30 @@ export async function updateAgencyStatus(input: UpdateAgencyStatusInput) {
     return { ok: false as const, status: 400, message: "isActive deve ser boolean" };
   }
 
-  const updated = await prisma.agency.update({
-    where: { id: agencyId },
-    data: { isActive },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      email: true,
-      phone: true,
-      createdAt: true,
-      isActive: true,
-      logoUrl: true,
-      primaryColor: true,
-    },
-  });
+  try {
+    const updated = await prisma.agency.update({
+      where: { id: agencyId },
+      data: { isActive },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        email: true,
+        phone: true,
+        createdAt: true,
+        isActive: true,
+        logoUrl: true,
+        primaryColor: true,
+      },
+    });
 
-  return { ok: true as const, data: updated };
+    return { ok: true as const, data: updated };
+  } catch (err: any) {
+    if (err?.code === "P2025") {
+      return { ok: false as const, status: 404, message: "Agencia nao encontrada" };
+    }
+    throw err;
+  }
 }
 
 export async function updateAgencyBranding(input: UpdateAgencyBrandingInput) {
@@ -194,26 +201,33 @@ export async function updateAgencyBranding(input: UpdateAgencyBrandingInput) {
       ? null
       : String(primaryColor);
 
-  const updated = await prisma.agency.update({
-    where: { id: agencyId },
-    data: {
-      logoUrl: logoUrlFinal,
-      primaryColor: primaryColorFinal,
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      email: true,
-      phone: true,
-      createdAt: true,
-      isActive: true,
-      logoUrl: true,
-      primaryColor: true,
-    },
-  });
+  try {
+    const updated = await prisma.agency.update({
+      where: { id: agencyId },
+      data: {
+        logoUrl: logoUrlFinal,
+        primaryColor: primaryColorFinal,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        email: true,
+        phone: true,
+        createdAt: true,
+        isActive: true,
+        logoUrl: true,
+        primaryColor: true,
+      },
+    });
 
-  return { ok: true as const, data: updated };
+    return { ok: true as const, data: updated };
+  } catch (err: any) {
+    if (err?.code === "P2025") {
+      return { ok: false as const, status: 404, message: "Agencia nao encontrada" };
+    }
+    throw err;
+  }
 }
 
 export async function createAgencyUser(input: CreateAgencyUserInput) {
