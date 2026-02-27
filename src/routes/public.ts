@@ -81,7 +81,9 @@ publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Respons
     // ✅ Ordena voos
     const order: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
     const flightsSorted = [...voucher.flights].sort(
-      (a, b) => (order[a.direction] ?? 99) - (order[b.direction] ?? 99)
+      (a, b) =>
+        (order[a.direction] ?? 99) - (order[b.direction] ?? 99) ||
+        a.segmentOrder - b.segmentOrder
     );
 
     return res.json({ ...voucher, flights: flightsSorted });

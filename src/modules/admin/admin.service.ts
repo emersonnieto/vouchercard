@@ -43,10 +43,18 @@ function isUserRole(value: unknown): value is UserRole {
 }
 
 const flightOrder: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
-function sortFlights<T extends { direction: string }>(flights: T[]) {
+function sortFlights<T extends { direction: string; segmentOrder?: number | null }>(flights: T[]) {
   return [...flights].sort(
-    (a, b) => (flightOrder[a.direction] ?? 99) - (flightOrder[b.direction] ?? 99)
+    (a, b) =>
+      (flightOrder[a.direction] ?? 99) - (flightOrder[b.direction] ?? 99) ||
+      (a.segmentOrder ?? 0) - (b.segmentOrder ?? 0)
   );
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const parsed = String(value).trim();
+  return parsed || undefined;
 }
 
 export async function getMe(userId: string) {
@@ -275,6 +283,15 @@ export async function createVoucher(input: CreateVoucherInput) {
       }
     | null;
   const transferInput = (transfer ?? null) as { receptiveName?: unknown } | null;
+  const flightInputs = (Array.isArray(flights) ? flights : []) as Array<{
+    direction?: unknown;
+    flightNumber?: unknown;
+    departureTime?: unknown;
+    arrivalTime?: unknown;
+    embarkAirport?: unknown;
+    disembarkAirport?: unknown;
+    connections?: unknown;
+  }>;
 
   if (!agencyId) {
     return {
@@ -293,8 +310,8 @@ export async function createVoucher(input: CreateVoucherInput) {
     return { ok: false as const, status: 400, message: "flights é obrigatório" };
   }
 
-  const hasOutbound = flights.some((f: any) => f?.direction === "OUTBOUND");
-  const hasReturn = flights.some((f: any) => f?.direction === "RETURN");
+  const hasOutbound = flightInputs.some((f) => f?.direction === "OUTBOUND");
+  const hasReturn = flightInputs.some((f) => f?.direction === "RETURN");
   if (!hasOutbound || !hasReturn) {
     return {
       ok: false as const,
@@ -303,6 +320,67 @@ export async function createVoucher(input: CreateVoucherInput) {
     };
   }
 
+  const flightsExpanded = flightInputs.flatMap((flightInput) => {
+    const direction =
+      flightInput.direction === "OUTBOUND" || flightInput.direction === "RETURN"
+        ? flightInput.direction
+        : null;
+
+    if (!direction) return [];
+
+    const finalDisembarkAirport = asOptionalString(flightInput.disembarkAirport);
+    const connectionInputs = (
+      Array.isArray(flightInput.connections) ? flightInput.connections : []
+    ) as Array<{
+      flightNumber?: unknown;
+      connectionAirport?: unknown;
+      departureTime?: unknown;
+      arrivalTime?: unknown;
+    }>;
+
+    const connections = connectionInputs
+      .map((connectionInput) => ({
+        flightNumber: asOptionalString(connectionInput.flightNumber),
+        connectionAirport: asOptionalString(connectionInput.connectionAirport),
+        departureTime: asOptionalString(connectionInput.departureTime),
+        arrivalTime: asOptionalString(connectionInput.arrivalTime),
+      }))
+      .filter(
+        (connection) =>
+          !!connection.connectionAirport ||
+          !!connection.flightNumber ||
+          !!connection.departureTime ||
+          !!connection.arrivalTime
+      );
+
+    const rows = [
+      {
+        direction,
+        segmentOrder: 0,
+        flightNumber: asOptionalString(flightInput.flightNumber),
+        departureTime: asOptionalString(flightInput.departureTime),
+        arrivalTime: asOptionalString(flightInput.arrivalTime),
+        embarkAirport: asOptionalString(flightInput.embarkAirport),
+        disembarkAirport: connections[0]?.connectionAirport ?? finalDisembarkAirport,
+      },
+    ];
+
+    connections.forEach((connection, index) => {
+      rows.push({
+        direction,
+        segmentOrder: index + 1,
+        flightNumber: connection.flightNumber,
+        departureTime: connection.departureTime,
+        arrivalTime: connection.arrivalTime,
+        embarkAirport: connection.connectionAirport,
+        disembarkAirport:
+          connections[index + 1]?.connectionAirport ?? finalDisembarkAirport,
+      });
+    });
+
+    return rows;
+  });
+
   try {
     const created = await prisma.voucher.create({
       data: {
@@ -310,13 +388,14 @@ export async function createVoucher(input: CreateVoucherInput) {
         reservationCode: reservationCode.trim(),
         clientName: clientName.trim(),
         flights: {
-          create: flights.map((f: any) => ({
-            direction: f.direction,
-            flightNumber: f.flightNumber?.toString(),
-            departureTime: f.departureTime?.toString(),
-            arrivalTime: f.arrivalTime?.toString(),
-            embarkAirport: f.embarkAirport?.toString(),
-            disembarkAirport: f.disembarkAirport?.toString(),
+          create: flightsExpanded.map((flight) => ({
+            direction: flight.direction,
+            segmentOrder: flight.segmentOrder,
+            flightNumber: flight.flightNumber,
+            departureTime: flight.departureTime,
+            arrivalTime: flight.arrivalTime,
+            embarkAirport: flight.embarkAirport,
+            disembarkAirport: flight.disembarkAirport,
           })),
         },
         hotel: hotelInput

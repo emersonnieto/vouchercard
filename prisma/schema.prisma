@@ -63,6 +63,7 @@ model Flight {
   id             String          @id @default(uuid())
   voucherId       String
   direction       FlightDirection @default(OUTBOUND)
+  segmentOrder    Int             @default(0)
 
   flightNumber    String?
   // MVP: só horário, sem data (ex: "14:00")
@@ -74,6 +75,7 @@ model Flight {
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 
   @@index([voucherId])
+  @@index([voucherId, direction, segmentOrder])
 }
 
 model Hotel {
