@@ -90,9 +90,7 @@ function getSupabaseStorageEnv() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error(
-      "Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY para upload de logos."
-    );
+    return null;
   }
 
   return { supabaseUrl, serviceRoleKey };
@@ -318,7 +316,17 @@ export async function uploadAgencyLogo(input: UploadAgencyLogoInput) {
     typeof fileName === "string" ? fileName : undefined,
     contentType
   );
-  const { supabaseUrl, serviceRoleKey } = getSupabaseStorageEnv();
+  const storageEnv = getSupabaseStorageEnv();
+  if (!storageEnv) {
+    return {
+      ok: false as const,
+      status: 503,
+      message:
+        "Upload de logo indisponível. Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY na API.",
+    };
+  }
+
+  const { supabaseUrl, serviceRoleKey } = storageEnv;
   const path = `${agencyId}/logo.${ext}`;
 
   const uploadResponse = await fetch(
