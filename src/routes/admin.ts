@@ -31,6 +31,12 @@ adminRouter.patch(
 );
 
 adminRouter.post(
+  "/agencies/:agencyId/logo",
+  requireRole(["SUPERADMIN"]),
+  adminController.uploadAgencyLogo
+);
+
+adminRouter.post(
   "/agencies/:agencyId/users",
   requireRole(["SUPERADMIN"]),
   adminController.createAgencyUser

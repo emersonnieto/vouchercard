@@ -21,6 +21,13 @@ type UpdateAgencyBrandingInput = {
   primaryColor?: unknown;
 };
 
+type UploadAgencyLogoInput = {
+  agencyId: string;
+  fileName?: unknown;
+  contentType?: unknown;
+  dataBase64?: unknown;
+};
+
 type CreateAgencyUserInput = {
   agencyId: string;
   name?: unknown;
@@ -43,6 +50,15 @@ function isUserRole(value: unknown): value is UserRole {
 }
 
 const flightOrder: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
+const MAX_LOGO_BYTES = 7 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/svg+xml",
+]);
+
 function sortFlights<T extends { direction: string; segmentOrder?: number | null }>(flights: T[]) {
   return [...flights].sort(
     (a, b) =>
@@ -55,6 +71,31 @@ function asOptionalString(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   const parsed = String(value).trim();
   return parsed || undefined;
+}
+
+function getLogoExtension(fileName: string | undefined, contentType: string) {
+  const fromFileName = fileName?.split(".").pop()?.trim().toLowerCase();
+  if (fromFileName && ["png", "jpg", "jpeg", "webp", "svg"].includes(fromFileName)) {
+    return fromFileName === "jpeg" ? "jpg" : fromFileName;
+  }
+
+  if (contentType === "image/png") return "png";
+  if (contentType === "image/webp") return "webp";
+  if (contentType === "image/svg+xml") return "svg";
+  return "jpg";
+}
+
+function getSupabaseStorageEnv() {
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error(
+      "Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY para upload de logos."
+    );
+  }
+
+  return { supabaseUrl, serviceRoleKey };
 }
 
 export async function getMe(userId: string) {
@@ -228,6 +269,88 @@ export async function updateAgencyBranding(input: UpdateAgencyBrandingInput) {
     }
     throw err;
   }
+}
+
+export async function uploadAgencyLogo(input: UploadAgencyLogoInput) {
+  const { agencyId, fileName, contentType, dataBase64 } = input;
+
+  if (!agencyId) {
+    return { ok: false as const, status: 400, message: "agencyId inválido" };
+  }
+
+  if (!contentType || typeof contentType !== "string" || !ALLOWED_LOGO_TYPES.has(contentType)) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Formato inválido. Use PNG, JPG, WEBP ou SVG.",
+    };
+  }
+
+  if (!dataBase64 || typeof dataBase64 !== "string") {
+    return { ok: false as const, status: 400, message: "Arquivo inválido" };
+  }
+
+  const agency = await prisma.agency.findUnique({
+    where: { id: agencyId },
+    select: { id: true },
+  });
+
+  if (!agency) {
+    return { ok: false as const, status: 404, message: "Agência não encontrada" };
+  }
+
+  let fileBuffer: Buffer;
+  try {
+    fileBuffer = Buffer.from(dataBase64, "base64");
+  } catch {
+    return { ok: false as const, status: 400, message: "Arquivo inválido" };
+  }
+
+  if (!fileBuffer.length || fileBuffer.length > MAX_LOGO_BYTES) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Arquivo grande demais. Máximo: 7MB.",
+    };
+  }
+
+  const ext = getLogoExtension(
+    typeof fileName === "string" ? fileName : undefined,
+    contentType
+  );
+  const { supabaseUrl, serviceRoleKey } = getSupabaseStorageEnv();
+  const path = `${agencyId}/logo.${ext}`;
+
+  const uploadResponse = await fetch(
+    `${supabaseUrl}/storage/v1/object/agency-logos/${path}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+        "Content-Type": contentType,
+        "x-upsert": "true",
+      },
+      body: new Uint8Array(fileBuffer),
+    }
+  );
+
+  if (!uploadResponse.ok) {
+    const details = await uploadResponse.text().catch(() => "");
+    console.error("[SUPABASE] logo upload falhou:", uploadResponse.status, details);
+    return {
+      ok: false as const,
+      status: 502,
+      message: "Falha ao enviar logo para o storage.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    data: {
+      url: `${supabaseUrl}/storage/v1/object/public/agency-logos/${path}`,
+    },
+  };
 }
 
 export async function createAgencyUser(input: CreateAgencyUserInput) {

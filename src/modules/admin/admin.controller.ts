@@ -74,6 +74,22 @@ export async function updateAgencyBranding(req: AuthedRequest, res: Response) {
   }
 }
 
+export async function uploadAgencyLogo(req: AuthedRequest, res: Response) {
+  try {
+    const body = req.body ?? {};
+    const result = await adminService.uploadAgencyLogo({
+      agencyId: String(req.params.agencyId || "").trim(),
+      fileName: body.fileName,
+      contentType: body.contentType,
+      dataBase64: body.dataBase64,
+    });
+    return reply(res, result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+}
+
 export async function createAgencyUser(req: AuthedRequest, res: Response) {
   try {
     const body = req.body ?? {};
