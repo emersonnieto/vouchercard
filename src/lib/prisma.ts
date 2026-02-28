@@ -13,6 +13,8 @@ function isLocalDatabase(url: string) {
 
 function getSslConfig() {
   const explicitSsl = process.env.DATABASE_SSL;
+  const explicitRejectUnauthorized =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED;
   const shouldUseSsl =
     explicitSsl === "true" ||
     (explicitSsl !== "false" && !isLocalDatabase(resolvedDatabaseUrl));
@@ -22,8 +24,9 @@ function getSslConfig() {
   }
 
   return {
-    rejectUnauthorized:
-      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
+    // Render and similar managed Postgres setups often require SSL
+    // while presenting a cert chain the runtime does not verify cleanly.
+    rejectUnauthorized: explicitRejectUnauthorized === "true",
   };
 }
 

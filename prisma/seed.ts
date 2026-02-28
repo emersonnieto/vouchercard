@@ -13,6 +13,8 @@ function isLocalDatabase(url: string) {
 
 function getSslConfig() {
   const explicitSsl = process.env.DATABASE_SSL;
+  const explicitRejectUnauthorized =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED;
   const shouldUseSsl =
     explicitSsl === "true" ||
     (explicitSsl !== "false" && !isLocalDatabase(resolvedDatabaseUrl));
@@ -22,8 +24,7 @@ function getSslConfig() {
   }
 
   return {
-    rejectUnauthorized:
-      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
+    rejectUnauthorized: explicitRejectUnauthorized === "true",
   };
 }
 
