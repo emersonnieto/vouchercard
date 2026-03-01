@@ -1,0 +1,6 @@
+ALTER TABLE "Voucher"
+ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+UPDATE "Voucher"
+SET "updatedAt" = "createdAt"
+WHERE "updatedAt" IS NULL;

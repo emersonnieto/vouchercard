@@ -40,6 +40,18 @@ type CreateVoucherInput = {
   agencyId: string;
   reservationCode?: unknown;
   clientName?: unknown;
+  status?: unknown;
+  flights?: unknown;
+  hotel?: unknown;
+  transfer?: unknown;
+};
+
+type UpdateVoucherInput = {
+  agencyId: string;
+  id: string;
+  reservationCode?: unknown;
+  clientName?: unknown;
+  status?: unknown;
   flights?: unknown;
   hotel?: unknown;
   transfer?: unknown;
@@ -47,6 +59,10 @@ type CreateVoucherInput = {
 
 function isUserRole(value: unknown): value is UserRole {
   return value === "SUPERADMIN" || value === "ADMIN";
+}
+
+function isVoucherStatus(value: unknown): value is "ACTIVE" | "CANCELED" | "USED" {
+  return value === "ACTIVE" || value === "CANCELED" || value === "USED";
 }
 
 const flightOrder: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
@@ -71,6 +87,169 @@ function asOptionalString(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   const parsed = String(value).trim();
   return parsed || undefined;
+}
+
+function normalizeVoucherPayload(
+  input: Omit<CreateVoucherInput, "agencyId">,
+  options: { requireStatus: boolean }
+) {
+  const { reservationCode, clientName, status, flights, hotel, transfer } = input;
+
+  const hotelInput = (hotel ?? null) as
+    | {
+        hotelName?: unknown;
+        mealPlan?: unknown;
+        roomType?: unknown;
+        checkInTime?: unknown;
+        checkOutTime?: unknown;
+      }
+    | null;
+  const transferInput = (transfer ?? null) as { receptiveName?: unknown } | null;
+  const flightInputs = (Array.isArray(flights) ? flights : []) as Array<{
+    direction?: unknown;
+    flightDate?: unknown;
+    flightNumber?: unknown;
+    departureTime?: unknown;
+    arrivalTime?: unknown;
+    embarkAirport?: unknown;
+    disembarkAirport?: unknown;
+    connections?: unknown;
+  }>;
+  if (!reservationCode || typeof reservationCode !== "string") {
+    return { ok: false as const, status: 400, message: "reservationCode Ã© obrigatÃ³rio" };
+  }
+  if (!clientName || typeof clientName !== "string") {
+    return { ok: false as const, status: 400, message: "clientName Ã© obrigatÃ³rio" };
+  }
+  if (!Array.isArray(flights) || flights.length < 1) {
+    return { ok: false as const, status: 400, message: "flights Ã© obrigatÃ³rio" };
+  }
+
+  if (!Array.isArray(flights) || flights.length < 1) {
+    return { ok: false as const, status: 400, message: "flights Ã© obrigatÃ³rio" };
+  }
+
+  const finalStatus =
+    status === undefined || status === null
+      ? options.requireStatus
+        ? null
+        : "ACTIVE"
+      : isVoucherStatus(status)
+      ? status
+      : null;
+
+  if (!finalStatus) {
+    return { ok: false as const, status: 400, message: "status invÃ¡lido" };
+  }
+
+  const hasOutbound = flightInputs.some((f) => f?.direction === "OUTBOUND");
+  const hasReturn = flightInputs.some((f) => f?.direction === "RETURN");
+  if (!hasOutbound || !hasReturn) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Inclua flights com direction OUTBOUND e RETURN",
+    };
+  }
+
+  const flightsExpanded = flightInputs.flatMap((flightInput) => {
+    const direction =
+      flightInput.direction === "OUTBOUND" || flightInput.direction === "RETURN"
+        ? flightInput.direction
+        : null;
+
+    if (!direction) return [];
+
+    const finalDisembarkAirport = asOptionalString(flightInput.disembarkAirport);
+    const connectionInputs = (
+      Array.isArray(flightInput.connections) ? flightInput.connections : []
+    ) as Array<{
+      flightDate?: unknown;
+      flightNumber?: unknown;
+      disembarkAirport?: unknown;
+      departureTime?: unknown;
+      arrivalTime?: unknown;
+    }>;
+
+    const connections = connectionInputs
+      .map((connectionInput) => ({
+        flightDate: asOptionalString(connectionInput.flightDate),
+        flightNumber: asOptionalString(connectionInput.flightNumber),
+        disembarkAirport: asOptionalString(connectionInput.disembarkAirport),
+        departureTime: asOptionalString(connectionInput.departureTime),
+        arrivalTime: asOptionalString(connectionInput.arrivalTime),
+      }))
+      .filter(
+        (connection) =>
+          !!connection.flightDate ||
+          !!connection.disembarkAirport ||
+          !!connection.flightNumber ||
+          !!connection.departureTime ||
+          !!connection.arrivalTime
+      );
+
+    const rows = [
+      {
+        direction,
+        segmentOrder: 0,
+        flightDate: asOptionalString(flightInput.flightDate),
+        flightNumber: asOptionalString(flightInput.flightNumber),
+        departureTime: asOptionalString(flightInput.departureTime),
+        arrivalTime: asOptionalString(flightInput.arrivalTime),
+        embarkAirport: asOptionalString(flightInput.embarkAirport),
+        disembarkAirport: finalDisembarkAirport,
+      },
+    ];
+
+    connections.forEach((connection, index) => {
+      rows.push({
+        direction,
+        segmentOrder: index + 1,
+        flightDate: connection.flightDate,
+        flightNumber: connection.flightNumber,
+        departureTime: connection.departureTime,
+        arrivalTime: connection.arrivalTime,
+        embarkAirport:
+          index === 0 ? finalDisembarkAirport : connections[index - 1]?.disembarkAirport,
+        disembarkAirport: connection.disembarkAirport,
+      });
+    });
+
+    return rows;
+  });
+
+  const hasHotelData =
+    !!asOptionalString(hotelInput?.hotelName) ||
+    !!asOptionalString(hotelInput?.mealPlan) ||
+    !!asOptionalString(hotelInput?.roomType) ||
+    !!asOptionalString(hotelInput?.checkInTime) ||
+    !!asOptionalString(hotelInput?.checkOutTime);
+
+  if (hasHotelData && !asOptionalString(hotelInput?.hotelName)) {
+    return { ok: false as const, status: 400, message: "hotel.hotelName Ã© obrigatÃ³rio" };
+  }
+
+  return {
+    ok: true as const,
+    data: {
+      reservationCode: reservationCode.trim(),
+      clientName: clientName.trim(),
+      status: finalStatus,
+      flights: flightsExpanded,
+      hotel: hasHotelData
+        ? {
+            hotelName: asOptionalString(hotelInput?.hotelName) ?? "",
+            mealPlan: asOptionalString(hotelInput?.mealPlan) ?? null,
+            roomType: asOptionalString(hotelInput?.roomType) ?? null,
+            checkInTime: asOptionalString(hotelInput?.checkInTime) ?? null,
+            checkOutTime: asOptionalString(hotelInput?.checkOutTime) ?? null,
+          }
+        : null,
+      transfer: asOptionalString(transferInput?.receptiveName)
+        ? { receptiveName: asOptionalString(transferInput?.receptiveName) ?? null }
+        : null,
+    },
+  };
 }
 
 function getLogoExtension(fileName: string | undefined, contentType: string) {
@@ -417,7 +596,7 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
 }
 
 export async function createVoucher(input: CreateVoucherInput) {
-  const { agencyId, reservationCode, clientName, flights, hotel, transfer } = input;
+  const { agencyId, reservationCode, clientName, status, flights, hotel, transfer } = input;
   const hotelInput = (hotel ?? null) as
     | {
         hotelName?: unknown;
@@ -538,6 +717,7 @@ export async function createVoucher(input: CreateVoucherInput) {
         agencyId,
         reservationCode: reservationCode.trim(),
         clientName: clientName.trim(),
+        status: isVoucherStatus(status) ? status : undefined,
         flights: {
           create: flightsExpanded.map((flight) => ({
             direction: flight.direction,
@@ -588,6 +768,118 @@ export async function createVoucher(input: CreateVoucherInput) {
   } catch (err: any) {
     if (err?.code === "P2002") {
       return { ok: false as const, status: 409, message: "reservationCode já existe" };
+    }
+    throw err;
+  }
+}
+
+export async function updateVoucher(input: UpdateVoucherInput) {
+  const { agencyId, id } = input;
+
+  if (!agencyId) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Seu usuÃ¡rio nÃ£o possui agencyId vinculado. Contate o suporte.",
+    };
+  }
+  if (!id) {
+    return { ok: false as const, status: 400, message: "ID invÃ¡lido" };
+  }
+
+  const existing = await prisma.voucher.findFirst({
+    where: { id, agencyId },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return { ok: false as const, status: 404, message: "Voucher nÃ£o encontrado" };
+  }
+
+  const normalized = normalizeVoucherPayload(input, { requireStatus: true });
+  if (!normalized.ok) {
+    return normalized;
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.voucher.update({
+        where: { id },
+        data: {
+          reservationCode: normalized.data.reservationCode,
+          clientName: normalized.data.clientName,
+          status: normalized.data.status,
+        },
+      });
+
+      await tx.flight.deleteMany({ where: { voucherId: id } });
+
+      await tx.flight.createMany({
+        data: normalized.data.flights.map((flight) => ({
+          voucherId: id,
+          direction: flight.direction as "OUTBOUND" | "RETURN",
+          segmentOrder: flight.segmentOrder,
+          flightDate: flight.flightDate,
+          flightNumber: flight.flightNumber,
+          departureTime: flight.departureTime,
+          arrivalTime: flight.arrivalTime,
+          embarkAirport: flight.embarkAirport,
+          disembarkAirport: flight.disembarkAirport,
+        })),
+      });
+
+      if (normalized.data.hotel) {
+        await tx.hotel.upsert({
+          where: { voucherId: id },
+          create: {
+            voucherId: id,
+            hotelName: normalized.data.hotel.hotelName,
+            mealPlan: normalized.data.hotel.mealPlan,
+            roomType: normalized.data.hotel.roomType,
+            checkInTime: normalized.data.hotel.checkInTime,
+            checkOutTime: normalized.data.hotel.checkOutTime,
+          },
+          update: {
+            hotelName: normalized.data.hotel.hotelName,
+            mealPlan: normalized.data.hotel.mealPlan,
+            roomType: normalized.data.hotel.roomType,
+            checkInTime: normalized.data.hotel.checkInTime,
+            checkOutTime: normalized.data.hotel.checkOutTime,
+          },
+        });
+      } else {
+        await tx.hotel.deleteMany({ where: { voucherId: id } });
+      }
+
+      if (normalized.data.transfer) {
+        await tx.transfer.upsert({
+          where: { voucherId: id },
+          create: {
+            voucherId: id,
+            receptiveName: normalized.data.transfer.receptiveName,
+          },
+          update: {
+            receptiveName: normalized.data.transfer.receptiveName,
+          },
+        });
+      } else {
+        await tx.transfer.deleteMany({ where: { voucherId: id } });
+      }
+    });
+
+    const updated = await prisma.voucher.findFirst({
+      where: { id, agencyId },
+      include: { flights: true, hotel: true, transfer: true },
+    });
+
+    if (!updated) {
+      return { ok: false as const, status: 404, message: "Voucher nÃ£o encontrado" };
+    }
+
+    return { ok: true as const, data: { ...updated, flights: sortFlights(updated.flights) } };
+  } catch (err: any) {
+    if (err?.code === "P2002") {
+      return { ok: false as const, status: 409, message: "reservationCode jÃ¡ existe" };
     }
     throw err;
   }

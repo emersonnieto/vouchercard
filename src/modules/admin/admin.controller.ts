@@ -149,3 +149,23 @@ export async function getVoucherById(req: AuthedRequest, res: Response) {
     return res.status(500).json({ message: "Erro interno" });
   }
 }
+
+export async function updateVoucher(req: AuthedRequest, res: Response) {
+  try {
+    const body = req.body ?? {};
+    const result = await adminService.updateVoucher({
+      agencyId: req.user?.agencyId ? String(req.user.agencyId) : "",
+      id: String(req.params.id || "").trim(),
+      reservationCode: body.reservationCode,
+      clientName: body.clientName,
+      status: body.status,
+      flights: body.flights,
+      hotel: body.hotel,
+      transfer: body.transfer,
+    });
+    return reply(res, result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+}

@@ -59,3 +59,9 @@ adminRouter.get(
   requireRole(["ADMIN", "SUPERADMIN"]),
   adminController.getVoucherById
 );
+
+adminRouter.patch(
+  "/vouchers/:id",
+  requireRole(["ADMIN", "SUPERADMIN"]),
+  adminController.updateVoucher
+);
