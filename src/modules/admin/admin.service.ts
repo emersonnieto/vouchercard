@@ -40,7 +40,6 @@ type CreateVoucherInput = {
   agencyId: string;
   reservationCode?: unknown;
   clientName?: unknown;
-  status?: unknown;
   flights?: unknown;
   hotel?: unknown;
   transfer?: unknown;
@@ -51,7 +50,6 @@ type UpdateVoucherInput = {
   id: string;
   reservationCode?: unknown;
   clientName?: unknown;
-  status?: unknown;
   flights?: unknown;
   hotel?: unknown;
   transfer?: unknown;
@@ -59,10 +57,6 @@ type UpdateVoucherInput = {
 
 function isUserRole(value: unknown): value is UserRole {
   return value === "SUPERADMIN" || value === "ADMIN";
-}
-
-function isVoucherStatus(value: unknown): value is "ACTIVE" | "CANCELED" | "USED" {
-  return value === "ACTIVE" || value === "CANCELED" || value === "USED";
 }
 
 const flightOrder: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
@@ -91,9 +85,8 @@ function asOptionalString(value: unknown): string | undefined {
 
 function normalizeVoucherPayload(
   input: Omit<CreateVoucherInput, "agencyId">,
-  options: { requireStatus: boolean }
 ) {
-  const { reservationCode, clientName, status, flights, hotel, transfer } = input;
+  const { reservationCode, clientName, flights, hotel, transfer } = input;
 
   const hotelInput = (hotel ?? null) as
     | {
@@ -129,18 +122,7 @@ function normalizeVoucherPayload(
     return { ok: false as const, status: 400, message: "flights Ã© obrigatÃ³rio" };
   }
 
-  const finalStatus =
-    status === undefined || status === null
-      ? options.requireStatus
-        ? null
-        : "ACTIVE"
-      : isVoucherStatus(status)
-      ? status
-      : null;
 
-  if (!finalStatus) {
-    return { ok: false as const, status: 400, message: "status invÃ¡lido" };
-  }
 
   const hasOutbound = flightInputs.some((f) => f?.direction === "OUTBOUND");
   const hasReturn = flightInputs.some((f) => f?.direction === "RETURN");
@@ -234,7 +216,6 @@ function normalizeVoucherPayload(
     data: {
       reservationCode: reservationCode.trim(),
       clientName: clientName.trim(),
-      status: finalStatus,
       flights: flightsExpanded,
       hotel: hasHotelData
         ? {
@@ -596,7 +577,7 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
 }
 
 export async function createVoucher(input: CreateVoucherInput) {
-  const { agencyId, reservationCode, clientName, status, flights, hotel, transfer } = input;
+  const { agencyId, reservationCode, clientName, flights, hotel, transfer } = input;
   const hotelInput = (hotel ?? null) as
     | {
         hotelName?: unknown;
@@ -717,7 +698,6 @@ export async function createVoucher(input: CreateVoucherInput) {
         agencyId,
         reservationCode: reservationCode.trim(),
         clientName: clientName.trim(),
-        status: isVoucherStatus(status) ? status : undefined,
         flights: {
           create: flightsExpanded.map((flight) => ({
             direction: flight.direction,
@@ -796,7 +776,7 @@ export async function updateVoucher(input: UpdateVoucherInput) {
     return { ok: false as const, status: 404, message: "Voucher nÃ£o encontrado" };
   }
 
-  const normalized = normalizeVoucherPayload(input, { requireStatus: true });
+  const normalized = normalizeVoucherPayload(input);
   if (!normalized.ok) {
     return normalized;
   }
@@ -808,7 +788,6 @@ export async function updateVoucher(input: UpdateVoucherInput) {
         data: {
           reservationCode: normalized.data.reservationCode,
           clientName: normalized.data.clientName,
-          status: normalized.data.status,
         },
       });
 

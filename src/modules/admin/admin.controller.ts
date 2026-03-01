@@ -158,7 +158,6 @@ export async function updateVoucher(req: AuthedRequest, res: Response) {
       id: String(req.params.id || "").trim(),
       reservationCode: body.reservationCode,
       clientName: body.clientName,
-      status: body.status,
       flights: body.flights,
       hotel: body.hotel,
       transfer: body.transfer,
