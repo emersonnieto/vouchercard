@@ -8,6 +8,7 @@ import { publicRouter } from "./routes/public";
 import { requireAuth } from "./middlewares/requireAuth";
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
 
 type RateLimitOptions = {
   keyPrefix: string;
@@ -61,10 +62,49 @@ function createRateLimiter({
   };
 }
 
+function parseCsvEnv(value: string | undefined) {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function readPositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${name} deve ser um inteiro positivo`);
+  }
+
+  return Math.floor(parsed);
+}
+
+const allowedOrigins = parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS);
+if (isProduction && allowedOrigins.length === 0) {
+  throw new Error("CORS_ALLOWED_ORIGINS deve ser configurado em producao");
+}
+
+const loginRateLimitWindowMs = readPositiveIntEnv(
+  "LOGIN_RATE_LIMIT_WINDOW_MS",
+  15 * 60 * 1000
+);
+const loginRateLimitMax = readPositiveIntEnv("LOGIN_RATE_LIMIT_MAX", 10);
+const publicVoucherRateLimitWindowMs = readPositiveIntEnv(
+  "PUBLIC_VOUCHER_RATE_LIMIT_WINDOW_MS",
+  5 * 60 * 1000
+);
+const publicVoucherRateLimitMax = readPositiveIntEnv(
+  "PUBLIC_VOUCHER_RATE_LIMIT_MAX",
+  60
+);
+
 const loginRateLimit = createRateLimiter({
   keyPrefix: "login",
-  windowMs: 15 * 60 * 1000,
-  max: 10,
+  windowMs: loginRateLimitWindowMs,
+  max: loginRateLimitMax,
   keyFn: (req) => {
     const email =
       typeof req.body?.email === "string"
@@ -76,11 +116,15 @@ const loginRateLimit = createRateLimiter({
 
 const publicVoucherRateLimit = createRateLimiter({
   keyPrefix: "public-voucher",
-  windowMs: 5 * 60 * 1000,
-  max: 60,
+  windowMs: publicVoucherRateLimitWindowMs,
+  max: publicVoucherRateLimitMax,
 });
 
 app.disable("x-powered-by");
+
+if (process.env.TRUST_PROXY === "true") {
+  app.set("trust proxy", 1);
+}
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -92,11 +136,29 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (!isProduction || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Origem nao permitida pelo CORS"));
+    },
     credentials: true,
   })
 );
 app.use(express.json({ limit: "12mb" }));
+
+if (isProduction) {
+  console.warn(
+    "[RATE_LIMIT] usando armazenamento em memoria por instancia; para multi-instancia, substitua por storage compartilhado."
+  );
+}
 
 /**
  * 🌐 Rota raiz
