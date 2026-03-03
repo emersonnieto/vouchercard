@@ -83,9 +83,7 @@ function readPositiveIntEnv(name: string, fallback: number) {
 }
 
 const allowedOrigins = parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS);
-if (isProduction && allowedOrigins.length === 0) {
-  throw new Error("CORS_ALLOWED_ORIGINS deve ser configurado em producao");
-}
+const hasCorsWhitelist = allowedOrigins.length > 0;
 
 const loginRateLimitWindowMs = readPositiveIntEnv(
   "LOGIN_RATE_LIMIT_WINDOW_MS",
@@ -142,7 +140,7 @@ app.use(
         return;
       }
 
-      if (!isProduction || allowedOrigins.includes(origin)) {
+      if (!isProduction || !hasCorsWhitelist || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
@@ -155,6 +153,11 @@ app.use(
 app.use(express.json({ limit: "12mb" }));
 
 if (isProduction) {
+  if (!hasCorsWhitelist) {
+    console.warn(
+      "[CORS] CORS_ALLOWED_ORIGINS nao configurado; liberando todas as origens ate configurar a whitelist."
+    );
+  }
   console.warn(
     "[RATE_LIMIT] usando armazenamento em memoria por instancia; para multi-instancia, substitua por storage compartilhado."
   );

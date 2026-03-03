@@ -99,7 +99,7 @@ npm run dev
 - Monitore `GET /health`
 - Não versionar `.env`
 
-- Em producao, `CORS_ALLOWED_ORIGINS` passa a ser obrigatoria
+- Em producao, configure `CORS_ALLOWED_ORIGINS` para ativar whitelist; sem ela, a API sobe com warning e libera todas as origens
 - `TRUST_PROXY=true` e recomendado quando a API fica atras de proxy/load balancer
 - Os rate limits continuam locais por instancia; para multi-instancia, substitua por um storage compartilhado
 
