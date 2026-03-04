@@ -17,6 +17,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "test": "node --require ts-node/register --test tests/**/*.test.js",
     "seed": "ts-node prisma/seed.ts",
     "bootstrap:superadmin": "ts-node scripts/bootstrap-superadmin.ts",
     "postinstall": "npx prisma generate --config prisma.config.ts"

@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import * as adminService from "./admin.service";
+import { resolveVoucherAgencyId } from "./voucherScope";
 
 type ServiceResult<T = unknown> =
   | { ok: true; status?: number; data: T }
@@ -11,21 +12,6 @@ function reply<T>(res: Response, result: ServiceResult<T>) {
     return res.status(result.status).json({ message: result.message });
   }
   return res.status(result.status ?? 200).json(result.data);
-}
-
-function readAgencyIdValue(value: unknown) {
-  if (typeof value !== "string") return "";
-  return value.trim();
-}
-
-function resolveVoucherAgencyId(req: AuthedRequest, explicitAgencyId?: unknown) {
-  const explicit = readAgencyIdValue(explicitAgencyId);
-
-  if (req.user?.role === "SUPERADMIN") {
-    return explicit || (req.user?.agencyId ? String(req.user.agencyId) : "");
-  }
-
-  return req.user?.agencyId ? String(req.user.agencyId) : "";
 }
 
 export async function getMe(req: AuthedRequest, res: Response) {
