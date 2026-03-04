@@ -13,6 +13,21 @@ function reply<T>(res: Response, result: ServiceResult<T>) {
   return res.status(result.status ?? 200).json(result.data);
 }
 
+function readAgencyIdValue(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function resolveVoucherAgencyId(req: AuthedRequest, explicitAgencyId?: unknown) {
+  const explicit = readAgencyIdValue(explicitAgencyId);
+
+  if (req.user?.role === "SUPERADMIN") {
+    return explicit || (req.user?.agencyId ? String(req.user.agencyId) : "");
+  }
+
+  return req.user?.agencyId ? String(req.user.agencyId) : "";
+}
+
 export async function getMe(req: AuthedRequest, res: Response) {
   try {
     const userId = req.user?.userId;
@@ -111,7 +126,7 @@ export async function createVoucher(req: AuthedRequest, res: Response) {
   try {
     const body = req.body ?? {};
     const result = await adminService.createVoucher({
-      agencyId: req.user?.agencyId ? String(req.user.agencyId) : "",
+      agencyId: resolveVoucherAgencyId(req, body.agencyId),
       reservationCode: body.reservationCode,
       clientName: body.clientName,
       flights: body.flights,
@@ -128,7 +143,7 @@ export async function createVoucher(req: AuthedRequest, res: Response) {
 export async function listVouchers(req: AuthedRequest, res: Response) {
   try {
     const result = await adminService.listVouchers(
-      req.user?.agencyId ? String(req.user.agencyId) : ""
+      resolveVoucherAgencyId(req, req.query.agencyId)
     );
     return reply(res, result);
   } catch (err) {
@@ -140,7 +155,7 @@ export async function listVouchers(req: AuthedRequest, res: Response) {
 export async function getVoucherById(req: AuthedRequest, res: Response) {
   try {
     const result = await adminService.getVoucherById(
-      req.user?.agencyId ? String(req.user.agencyId) : "",
+      resolveVoucherAgencyId(req, req.query.agencyId),
       String(req.params.id || "").trim()
     );
     return reply(res, result);
@@ -154,7 +169,7 @@ export async function updateVoucher(req: AuthedRequest, res: Response) {
   try {
     const body = req.body ?? {};
     const result = await adminService.updateVoucher({
-      agencyId: req.user?.agencyId ? String(req.user.agencyId) : "",
+      agencyId: resolveVoucherAgencyId(req, body.agencyId),
       id: String(req.params.id || "").trim(),
       reservationCode: body.reservationCode,
       clientName: body.clientName,

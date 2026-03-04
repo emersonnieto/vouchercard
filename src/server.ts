@@ -17,47 +17,158 @@ type RateLimitOptions = {
   keyFn?: (req: Request) => string;
 };
 
+type RateLimitDecision = {
+  count: number;
+  retryAfterSeconds: number;
+};
+
+type RateLimitRow = {
+  count: number | bigint;
+  retry_after_seconds: number | bigint;
+};
+
+const fallbackRateLimitHits = new Map<string, { count: number; resetAt: number }>();
+let rateLimitStoreReady: Promise<void> | null = null;
+let warnedAboutRateLimitFallback = false;
+
+function toSafeNumber(value: number | bigint | null | undefined, fallback = 0) {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return fallback;
+}
+
+async function ensureRateLimitStore() {
+  if (!rateLimitStoreReady) {
+    rateLimitStoreReady = (async () => {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS app_rate_limits (
+          key TEXT PRIMARY KEY,
+          count INTEGER NOT NULL,
+          reset_at TIMESTAMPTZ NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_app_rate_limits_reset_at
+        ON app_rate_limits (reset_at)
+      `);
+    })();
+  }
+
+  await rateLimitStoreReady;
+}
+
+async function consumeDistributedRateLimit(
+  cacheKey: string,
+  windowMs: number
+): Promise<RateLimitDecision> {
+  await ensureRateLimitStore();
+
+  const rows = await prisma.$queryRawUnsafe<RateLimitRow[]>(
+    `
+      INSERT INTO app_rate_limits (key, count, reset_at, updated_at)
+      VALUES ($1, 1, NOW() + ($2 * INTERVAL '1 millisecond'), NOW())
+      ON CONFLICT (key) DO UPDATE
+      SET
+        count = CASE
+          WHEN app_rate_limits.reset_at <= NOW() THEN 1
+          ELSE app_rate_limits.count + 1
+        END,
+        reset_at = CASE
+          WHEN app_rate_limits.reset_at <= NOW() THEN NOW() + ($2 * INTERVAL '1 millisecond')
+          ELSE app_rate_limits.reset_at
+        END,
+        updated_at = NOW()
+      RETURNING
+        count::int AS count,
+        GREATEST(1, CEIL(EXTRACT(EPOCH FROM (reset_at - NOW()))))::int AS retry_after_seconds
+    `,
+    cacheKey,
+    windowMs
+  );
+
+  if (Math.random() < 0.01) {
+    void prisma.$executeRawUnsafe(
+      "DELETE FROM app_rate_limits WHERE reset_at <= NOW()"
+    ).catch((error) => {
+      console.error("[RATE_LIMIT] cleanup failed:", error);
+    });
+  }
+
+  const row = rows[0];
+  return {
+    count: toSafeNumber(row?.count, 1),
+    retryAfterSeconds: Math.max(1, toSafeNumber(row?.retry_after_seconds, 1)),
+  };
+}
+
+function consumeFallbackRateLimit(
+  cacheKey: string,
+  windowMs: number
+): RateLimitDecision {
+  const now = Date.now();
+
+  for (const [storedKey, entry] of fallbackRateLimitHits) {
+    if (entry.resetAt <= now) {
+      fallbackRateLimitHits.delete(storedKey);
+    }
+  }
+
+  const current = fallbackRateLimitHits.get(cacheKey);
+
+  if (!current || current.resetAt <= now) {
+    fallbackRateLimitHits.set(cacheKey, {
+      count: 1,
+      resetAt: now + windowMs,
+    });
+    return {
+      count: 1,
+      retryAfterSeconds: Math.max(1, Math.ceil(windowMs / 1000)),
+    };
+  }
+
+  current.count += 1;
+  fallbackRateLimitHits.set(cacheKey, current);
+
+  return {
+    count: current.count,
+    retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
+}
+
 function createRateLimiter({
   keyPrefix,
   windowMs,
   max,
   keyFn,
 }: RateLimitOptions) {
-  const hits = new Map<string, { count: number; resetAt: number }>();
-
-  return (req: Request, res: Response, next: NextFunction) => {
-    const now = Date.now();
+  return async (req: Request, res: Response, next: NextFunction) => {
     const rawKey =
       keyFn?.(req) || req.ip || req.socket.remoteAddress || "unknown";
     const normalizedKey = rawKey.trim().toLowerCase() || "unknown";
     const cacheKey = `${keyPrefix}:${normalizedKey}`;
 
-    for (const [storedKey, entry] of hits) {
-      if (entry.resetAt <= now) {
-        hits.delete(storedKey);
+    let decision: RateLimitDecision;
+    try {
+      decision = await consumeDistributedRateLimit(cacheKey, windowMs);
+    } catch (error) {
+      if (!warnedAboutRateLimitFallback) {
+        warnedAboutRateLimitFallback = true;
+        console.error(
+          "[RATE_LIMIT] failed to use distributed store, falling back to in-memory limiter:",
+          error
+        );
       }
+      decision = consumeFallbackRateLimit(cacheKey, windowMs);
     }
 
-    const current = hits.get(cacheKey);
-
-    if (!current || current.resetAt <= now) {
-      hits.set(cacheKey, { count: 1, resetAt: now + windowMs });
-      return next();
-    }
-
-    if (current.count >= max) {
-      const retryAfterSeconds = Math.max(
-        1,
-        Math.ceil((current.resetAt - now) / 1000)
-      );
-      res.setHeader("Retry-After", String(retryAfterSeconds));
+    if (decision.count > max) {
+      res.setHeader("Retry-After", String(decision.retryAfterSeconds));
       return res.status(429).json({
         message: "Muitas tentativas. Aguarde antes de tentar novamente.",
       });
     }
 
-    current.count += 1;
-    hits.set(cacheKey, current);
     return next();
   };
 }
@@ -159,7 +270,7 @@ if (isProduction) {
     );
   }
   console.warn(
-    "[RATE_LIMIT] usando armazenamento em memoria por instancia; para multi-instancia, substitua por storage compartilhado."
+    "[RATE_LIMIT] usando Postgres para contagem compartilhada entre instancias, com fallback local se o store falhar."
   );
 }
 
