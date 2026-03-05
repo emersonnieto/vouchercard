@@ -81,7 +81,7 @@ npm run dev
 
 - `POST /auth/login`
 - `POST /auth/change-password`
-- `GET /public/vouchers/:reservationCode`
+- `GET /public/vouchers/:reservationCode` (use `?agencySlug=...` quando houver codigo duplicado entre agencias)
 - `GET /admin/me`
 - `GET /admin/agencies`
 - `POST /admin/agencies`
@@ -107,3 +107,4 @@ npm run dev
 
 - Arquitetura administrativa organizada em `route -> controller -> service`
 - Sem suíte de testes automatizados no momento
+

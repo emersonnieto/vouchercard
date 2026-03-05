@@ -40,17 +40,19 @@ model User {
 }
 
 model Voucher {
-  id              String        @id @default(uuid())
-  agencyId         String
-  reservationCode  String        @unique   // ✅ agora é único global
-  clientName       String
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id              String   @id @default(uuid())
+  agencyId        String
+  reservationCode String
+  clientName      String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   agency   Agency  @relation(fields: [agencyId], references: [id])
   flights  Flight[]
   hotel    Hotel?
   transfer Transfer?
+
+  @@unique([agencyId, reservationCode])
 }
 
 model Flight {
@@ -94,3 +96,4 @@ model Transfer {
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
+

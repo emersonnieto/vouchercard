@@ -1,48 +1,84 @@
 import { Router, Request, Response } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
 export const publicRouter = Router();
 
+const voucherPublicInclude = {
+  flights: true,
+  hotel: true,
+  transfer: true,
+  agency: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      phone: true,
+      email: true,
+      logoUrl: true,
+      primaryColor: true,
+      isActive: true,
+    },
+  },
+} as const;
+
+type PublicVoucher = Prisma.VoucherGetPayload<{ include: typeof voucherPublicInclude }>;
+
 publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Response) => {
   try {
     const reservationCode = String(req.params.reservationCode || "").trim();
+    const agencySlug = String(req.query.agencySlug || "").trim().toLowerCase();
 
     if (!reservationCode) {
       return res.status(400).json({ message: "reservationCode invalido" });
     }
 
-    const voucher = await prisma.voucher.findFirst({
-      where: {
-        reservationCode: {
-          equals: reservationCode,
-          mode: "insensitive",
-        },
+    const baseWhere = {
+      reservationCode: {
+        equals: reservationCode,
+        mode: "insensitive" as const,
       },
-      include: {
-        flights: true,
-        hotel: true,
-        transfer: true,
-        agency: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            phone: true,
-            email: true,
-            logoUrl: true,
-            primaryColor: true,
+      agency: {
+        isActive: true,
+      },
+    };
+
+    let voucher: PublicVoucher | null = null;
+
+    if (agencySlug) {
+      voucher = await prisma.voucher.findFirst({
+        where: {
+          ...baseWhere,
+          agency: {
             isActive: true,
+            slug: agencySlug,
           },
         },
-      },
-    });
+        include: voucherPublicInclude,
+      });
 
-    if (!voucher) {
-      return res.status(404).json({ message: "Voucher nao encontrado" });
-    }
+      if (!voucher) {
+        return res.status(404).json({ message: "Voucher nao encontrado" });
+      }
+    } else {
+      const vouchers = await prisma.voucher.findMany({
+        where: baseWhere,
+        include: voucherPublicInclude,
+        take: 2,
+        orderBy: { createdAt: "desc" },
+      });
 
-    if (voucher.agency?.isActive === false) {
-      return res.status(404).json({ message: "Voucher nao encontrado" });
+      if (!vouchers.length) {
+        return res.status(404).json({ message: "Voucher nao encontrado" });
+      }
+
+      if (vouchers.length > 1) {
+        return res.status(409).json({
+          message: "Codigo de reserva duplicado entre agencias. Informe agencySlug.",
+        });
+      }
+
+      voucher = vouchers[0];
     }
 
     const order: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
