@@ -302,7 +302,7 @@ app.use("/auth", authRouter);
 
 /**
  * 🌍 Rotas públicas do APP (sem login)
- * Ex: GET /public/vouchers/ABC123
+ * Ex: GET /public/vouchers/VC9A2K7M
  */
 app.use("/public/vouchers", publicVoucherRateLimit);
 app.use("/public", publicRouter);

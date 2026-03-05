@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import { randomBytes } from "node:crypto";
 import { prisma } from "../../lib/prisma";
 
 type UserRole = "SUPERADMIN" | "ADMIN";
@@ -68,6 +69,9 @@ const ALLOWED_LOGO_TYPES = new Set([
   "image/webp",
   "image/svg+xml",
 ]);
+const PUBLIC_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PUBLIC_CODE_LENGTH = 8;
+const MAX_PUBLIC_CODE_ATTEMPTS = 12;
 
 function sortFlights<T extends { direction: string; segmentOrder?: number | null }>(flights: T[]) {
   return [...flights].sort(
@@ -81,6 +85,33 @@ function asOptionalString(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   const parsed = String(value).trim();
   return parsed || undefined;
+}
+
+function generatePublicCodeCandidate() {
+  const bytes = randomBytes(PUBLIC_CODE_LENGTH);
+  let code = "";
+
+  for (let i = 0; i < PUBLIC_CODE_LENGTH; i += 1) {
+    code += PUBLIC_CODE_ALPHABET[bytes[i] % PUBLIC_CODE_ALPHABET.length];
+  }
+
+  return code;
+}
+
+async function generateUniquePublicCode() {
+  for (let i = 0; i < MAX_PUBLIC_CODE_ATTEMPTS; i += 1) {
+    const candidate = generatePublicCodeCandidate();
+    const existing = await prisma.voucher.findUnique({
+      where: { publicCode: candidate },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Falha ao gerar codigo publico unico do voucher.");
 }
 
 function normalizeVoucherPayload(
@@ -693,9 +724,12 @@ export async function createVoucher(input: CreateVoucherInput) {
   });
 
   try {
+    const publicCode = await generateUniquePublicCode();
+
     const created = await prisma.voucher.create({
       data: {
         agencyId,
+        publicCode,
         reservationCode: reservationCode.trim(),
         clientName: clientName.trim(),
         flights: {

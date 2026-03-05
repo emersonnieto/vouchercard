@@ -81,7 +81,7 @@ npm run dev
 
 - `POST /auth/login`
 - `POST /auth/change-password`
-- `GET /public/vouchers/:reservationCode` (use `?agencySlug=...` quando houver codigo duplicado entre agencias)
+- `GET /public/vouchers/:publicCode`
 - `GET /admin/me`
 - `GET /admin/agencies`
 - `POST /admin/agencies`

@@ -24,61 +24,26 @@ const voucherPublicInclude = {
 
 type PublicVoucher = Prisma.VoucherGetPayload<{ include: typeof voucherPublicInclude }>;
 
-publicRouter.get("/vouchers/:reservationCode", async (req: Request, res: Response) => {
+publicRouter.get("/vouchers/:publicCode", async (req: Request, res: Response) => {
   try {
-    const reservationCode = String(req.params.reservationCode || "").trim();
-    const agencySlug = String(req.query.agencySlug || "").trim().toLowerCase();
+    const publicCode = String(req.params.publicCode || "").trim().toUpperCase();
 
-    if (!reservationCode) {
-      return res.status(400).json({ message: "reservationCode invalido" });
+    if (!publicCode) {
+      return res.status(400).json({ message: "publicCode invalido" });
     }
 
-    const baseWhere = {
-      reservationCode: {
-        equals: reservationCode,
-        mode: "insensitive" as const,
-      },
-      agency: {
-        isActive: true,
-      },
-    };
-
-    let voucher: PublicVoucher | null = null;
-
-    if (agencySlug) {
-      voucher = await prisma.voucher.findFirst({
-        where: {
-          ...baseWhere,
-          agency: {
-            isActive: true,
-            slug: agencySlug,
-          },
+    const voucher: PublicVoucher | null = await prisma.voucher.findFirst({
+      where: {
+        publicCode,
+        agency: {
+          isActive: true,
         },
-        include: voucherPublicInclude,
-      });
+      },
+      include: voucherPublicInclude,
+    });
 
-      if (!voucher) {
-        return res.status(404).json({ message: "Voucher nao encontrado" });
-      }
-    } else {
-      const vouchers = await prisma.voucher.findMany({
-        where: baseWhere,
-        include: voucherPublicInclude,
-        take: 2,
-        orderBy: { createdAt: "desc" },
-      });
-
-      if (!vouchers.length) {
-        return res.status(404).json({ message: "Voucher nao encontrado" });
-      }
-
-      if (vouchers.length > 1) {
-        return res.status(409).json({
-          message: "Codigo de reserva duplicado entre agencias. Informe agencySlug.",
-        });
-      }
-
-      voucher = vouchers[0];
+    if (!voucher) {
+      return res.status(404).json({ message: "Voucher nao encontrado" });
     }
 
     const order: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };

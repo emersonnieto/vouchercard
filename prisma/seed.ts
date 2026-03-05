@@ -50,6 +50,7 @@ async function main() {
   const voucher = await prisma.voucher.create({
     data: {
       agencyId: agency.id,
+      publicCode: "VC00000001",
       reservationCode: "ABC123",
       clientName: "Cliente Teste",
       flights: {
@@ -91,6 +92,7 @@ async function main() {
 
   console.log("✅ Seed OK");
   console.log("AGENCY_ID:", agency.id);
+  console.log("CODIGO_PUBLICO:", voucher.publicCode);
   console.log("RESERVA:", voucher.reservationCode);
 }
 
