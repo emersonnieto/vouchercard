@@ -114,6 +114,7 @@ export async function createVoucher(req: AuthedRequest, res: Response) {
     const result = await adminService.createVoucher({
       agencyId: resolveVoucherAgencyId(req, body.agencyId),
       reservationCode: body.reservationCode,
+      webCheckinCode: body.webCheckinCode,
       clientName: body.clientName,
       flights: body.flights,
       hotel: body.hotel,
@@ -158,6 +159,7 @@ export async function updateVoucher(req: AuthedRequest, res: Response) {
       agencyId: resolveVoucherAgencyId(req, body.agencyId),
       id: String(req.params.id || "").trim(),
       reservationCode: body.reservationCode,
+      webCheckinCode: body.webCheckinCode,
       clientName: body.clientName,
       flights: body.flights,
       hotel: body.hotel,

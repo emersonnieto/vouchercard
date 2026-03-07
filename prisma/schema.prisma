@@ -44,6 +44,7 @@ model Voucher {
   agencyId        String
   publicCode      String   @unique
   reservationCode String
+  webCheckinCode  String?
   clientName      String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

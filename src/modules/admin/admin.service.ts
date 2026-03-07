@@ -40,6 +40,7 @@ type CreateAgencyUserInput = {
 type CreateVoucherInput = {
   agencyId: string;
   reservationCode?: unknown;
+  webCheckinCode?: unknown;
   clientName?: unknown;
   flights?: unknown;
   hotel?: unknown;
@@ -50,6 +51,7 @@ type UpdateVoucherInput = {
   agencyId: string;
   id: string;
   reservationCode?: unknown;
+  webCheckinCode?: unknown;
   clientName?: unknown;
   flights?: unknown;
   hotel?: unknown;
@@ -117,7 +119,7 @@ async function generateUniquePublicCode() {
 function normalizeVoucherPayload(
   input: Omit<CreateVoucherInput, "agencyId">,
 ) {
-  const { reservationCode, clientName, flights, hotel, transfer } = input;
+  const { reservationCode, webCheckinCode, clientName, flights, hotel, transfer } = input;
 
   const hotelInput = (hotel ?? null) as
     | {
@@ -246,6 +248,7 @@ function normalizeVoucherPayload(
     ok: true as const,
     data: {
       reservationCode: reservationCode.trim(),
+      webCheckinCode: asOptionalString(webCheckinCode) ?? null,
       clientName: clientName.trim(),
       flights: flightsExpanded,
       hotel: hasHotelData
@@ -608,7 +611,7 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
 }
 
 export async function createVoucher(input: CreateVoucherInput) {
-  const { agencyId, reservationCode, clientName, flights, hotel, transfer } = input;
+  const { agencyId, reservationCode, webCheckinCode, clientName, flights, hotel, transfer } = input;
   const hotelInput = (hotel ?? null) as
     | {
         hotelName?: unknown;
@@ -731,6 +734,7 @@ export async function createVoucher(input: CreateVoucherInput) {
         agencyId,
         publicCode,
         reservationCode: reservationCode.trim(),
+        webCheckinCode: asOptionalString(webCheckinCode) ?? null,
         clientName: clientName.trim(),
         flights: {
           create: flightsExpanded.map((flight) => ({
@@ -821,6 +825,7 @@ export async function updateVoucher(input: UpdateVoucherInput) {
         where: { id },
         data: {
           reservationCode: normalized.data.reservationCode,
+          webCheckinCode: normalized.data.webCheckinCode,
           clientName: normalized.data.clientName,
         },
       });
