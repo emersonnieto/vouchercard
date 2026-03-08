@@ -955,41 +955,80 @@ export async function lookupPostalCode(input: LookupPostalCodeInput) {
       return { ok: false as const, status: 400, message: "CEP invalido. Use 8 digitos." };
     }
 
-    const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-    if (!response.ok) {
-      return { ok: false as const, status: 502, message: "Falha ao consultar CEP." };
+    try {
+      const viaCepResponse = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      if (viaCepResponse.ok) {
+        const viaCepData = (await viaCepResponse.json()) as {
+          erro?: boolean;
+          cep?: string;
+          logradouro?: string;
+          bairro?: string;
+          localidade?: string;
+          uf?: string;
+        };
+
+        if (!viaCepData.erro) {
+          return {
+            ok: true as const,
+            data: {
+              countryCode: "BR",
+              country: "Brasil",
+              postalCode: viaCepData.cep ?? cep,
+              street: viaCepData.logradouro ?? null,
+              neighborhood: viaCepData.bairro ?? null,
+              city: viaCepData.localidade ?? null,
+              state: viaCepData.uf ?? null,
+            },
+          };
+        }
+      }
+    } catch {
+      // segue para fallback
     }
 
-    const data = (await response.json()) as {
-      erro?: boolean;
-      cep?: string;
-      logradouro?: string;
-      bairro?: string;
-      localidade?: string;
-      uf?: string;
-    };
+    try {
+      const brasilApiResponse = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+      if (brasilApiResponse.ok) {
+        const brasilApiData = (await brasilApiResponse.json()) as {
+          cep?: string;
+          street?: string;
+          neighborhood?: string;
+          city?: string;
+          state?: string;
+        };
 
-    if (data.erro) {
-      return { ok: false as const, status: 404, message: "CEP nao encontrado." };
+        return {
+          ok: true as const,
+          data: {
+            countryCode: "BR",
+            country: "Brasil",
+            postalCode: brasilApiData.cep ?? cep,
+            street: brasilApiData.street ?? null,
+            neighborhood: brasilApiData.neighborhood ?? null,
+            city: brasilApiData.city ?? null,
+            state: brasilApiData.state ?? null,
+          },
+        };
+      }
+
+      if (brasilApiResponse.status === 404) {
+        return { ok: false as const, status: 404, message: "CEP nao encontrado." };
+      }
+    } catch {
+      return { ok: false as const, status: 502, message: "Falha ao consultar CEP externo." };
     }
 
-    return {
-      ok: true as const,
-      data: {
-        countryCode: "BR",
-        country: "Brasil",
-        postalCode: data.cep ?? cep,
-        street: data.logradouro ?? null,
-        neighborhood: data.bairro ?? null,
-        city: data.localidade ?? null,
-        state: data.uf ?? null,
-      },
-    };
+    return { ok: false as const, status: 502, message: "Falha ao consultar CEP." };
   }
 
-  const response = await fetch(
-    `https://api.zippopotam.us/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCodeRaw)}`
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.zippopotam.us/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCodeRaw)}`
+    );
+  } catch {
+    return { ok: false as const, status: 502, message: "Falha ao consultar codigo postal externo." };
+  }
 
   if (response.status === 404) {
     return { ok: false as const, status: 404, message: "Codigo postal nao encontrado." };
