@@ -181,6 +181,7 @@ function normalizeVoucherPayload(
     ) as Array<{
       flightDate?: unknown;
       flightNumber?: unknown;
+      embarkAirport?: unknown;
       disembarkAirport?: unknown;
       departureTime?: unknown;
       arrivalTime?: unknown;
@@ -190,6 +191,7 @@ function normalizeVoucherPayload(
       .map((connectionInput) => ({
         flightDate: asOptionalString(connectionInput.flightDate),
         flightNumber: asOptionalString(connectionInput.flightNumber),
+        embarkAirport: asOptionalString(connectionInput.embarkAirport),
         disembarkAirport: asOptionalString(connectionInput.disembarkAirport),
         departureTime: asOptionalString(connectionInput.departureTime),
         arrivalTime: asOptionalString(connectionInput.arrivalTime),
@@ -197,6 +199,7 @@ function normalizeVoucherPayload(
       .filter(
         (connection) =>
           !!connection.flightDate ||
+          !!connection.embarkAirport ||
           !!connection.disembarkAirport ||
           !!connection.flightNumber ||
           !!connection.departureTime ||
@@ -224,8 +227,7 @@ function normalizeVoucherPayload(
         flightNumber: connection.flightNumber,
         departureTime: connection.departureTime,
         arrivalTime: connection.arrivalTime,
-        embarkAirport:
-          index === 0 ? finalDisembarkAirport : connections[index - 1]?.disembarkAirport,
+        embarkAirport: connection.embarkAirport,
         disembarkAirport: connection.disembarkAirport,
       });
     });
@@ -674,6 +676,7 @@ export async function createVoucher(input: CreateVoucherInput) {
     ) as Array<{
       flightDate?: unknown;
       flightNumber?: unknown;
+      embarkAirport?: unknown;
       disembarkAirport?: unknown;
       departureTime?: unknown;
       arrivalTime?: unknown;
@@ -683,6 +686,7 @@ export async function createVoucher(input: CreateVoucherInput) {
       .map((connectionInput) => ({
         flightDate: asOptionalString(connectionInput.flightDate),
         flightNumber: asOptionalString(connectionInput.flightNumber),
+        embarkAirport: asOptionalString(connectionInput.embarkAirport),
         disembarkAirport: asOptionalString(connectionInput.disembarkAirport),
         departureTime: asOptionalString(connectionInput.departureTime),
         arrivalTime: asOptionalString(connectionInput.arrivalTime),
@@ -690,6 +694,7 @@ export async function createVoucher(input: CreateVoucherInput) {
       .filter(
         (connection) =>
           !!connection.flightDate ||
+          !!connection.embarkAirport ||
           !!connection.disembarkAirport ||
           !!connection.flightNumber ||
           !!connection.departureTime ||
@@ -717,8 +722,7 @@ export async function createVoucher(input: CreateVoucherInput) {
         flightNumber: connection.flightNumber,
         departureTime: connection.departureTime,
         arrivalTime: connection.arrivalTime,
-        embarkAirport:
-          index === 0 ? finalDisembarkAirport : connections[index - 1]?.disembarkAirport,
+        embarkAirport: connection.embarkAirport,
         disembarkAirport: connection.disembarkAirport,
       });
     });
