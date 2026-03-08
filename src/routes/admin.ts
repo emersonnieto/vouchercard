@@ -65,3 +65,9 @@ adminRouter.patch(
   requireRole(["ADMIN", "SUPERADMIN"]),
   adminController.updateVoucher
 );
+
+adminRouter.get(
+  "/postal-code-lookup",
+  requireRole(["ADMIN", "SUPERADMIN"]),
+  adminController.lookupPostalCode
+);

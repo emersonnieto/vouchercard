@@ -171,3 +171,16 @@ export async function updateVoucher(req: AuthedRequest, res: Response) {
     return res.status(500).json({ message: "Erro interno" });
   }
 }
+
+export async function lookupPostalCode(req: AuthedRequest, res: Response) {
+  try {
+    const result = await adminService.lookupPostalCode({
+      countryCode: req.query.countryCode,
+      postalCode: req.query.postalCode,
+    });
+    return reply(res, result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+}

@@ -1,0 +1,13 @@
+ALTER TABLE "Hotel"
+ADD COLUMN "email" TEXT,
+ADD COLUMN "phones" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN "postalCode" TEXT,
+ADD COLUMN "street" TEXT,
+ADD COLUMN "hotelNumber" TEXT,
+ADD COLUMN "neighborhood" TEXT,
+ADD COLUMN "city" TEXT,
+ADD COLUMN "state" TEXT,
+ADD COLUMN "country" TEXT,
+ADD COLUMN "nights" INTEGER,
+ADD COLUMN "checkInAt" TEXT,
+ADD COLUMN "checkOutAt" TEXT;

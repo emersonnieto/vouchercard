@@ -89,6 +89,24 @@ function asOptionalString(value: unknown): string | undefined {
   return parsed || undefined;
 }
 
+function asOptionalInteger(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  const integerValue = Math.trunc(parsed);
+  return integerValue >= 0 ? integerValue : undefined;
+}
+
+function asOptionalStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => asOptionalString(item))
+    .filter((item): item is string => !!item);
+}
+
 function generatePublicCodeCandidate() {
   const bytes = randomBytes(PUBLIC_CODE_LENGTH);
   let code = "";
@@ -124,6 +142,18 @@ function normalizeVoucherPayload(
   const hotelInput = (hotel ?? null) as
     | {
         hotelName?: unknown;
+        email?: unknown;
+        phones?: unknown;
+        postalCode?: unknown;
+        street?: unknown;
+        hotelNumber?: unknown;
+        neighborhood?: unknown;
+        city?: unknown;
+        state?: unknown;
+        country?: unknown;
+        nights?: unknown;
+        checkInAt?: unknown;
+        checkOutAt?: unknown;
         mealPlan?: unknown;
         roomType?: unknown;
         checkInTime?: unknown;
@@ -237,6 +267,18 @@ function normalizeVoucherPayload(
 
   const hasHotelData =
     !!asOptionalString(hotelInput?.hotelName) ||
+    !!asOptionalString(hotelInput?.email) ||
+    asOptionalStringArray(hotelInput?.phones).length > 0 ||
+    !!asOptionalString(hotelInput?.postalCode) ||
+    !!asOptionalString(hotelInput?.street) ||
+    !!asOptionalString(hotelInput?.hotelNumber) ||
+    !!asOptionalString(hotelInput?.neighborhood) ||
+    !!asOptionalString(hotelInput?.city) ||
+    !!asOptionalString(hotelInput?.state) ||
+    !!asOptionalString(hotelInput?.country) ||
+    asOptionalInteger(hotelInput?.nights) !== undefined ||
+    !!asOptionalString(hotelInput?.checkInAt) ||
+    !!asOptionalString(hotelInput?.checkOutAt) ||
     !!asOptionalString(hotelInput?.mealPlan) ||
     !!asOptionalString(hotelInput?.roomType) ||
     !!asOptionalString(hotelInput?.checkInTime) ||
@@ -256,6 +298,18 @@ function normalizeVoucherPayload(
       hotel: hasHotelData
         ? {
             hotelName: asOptionalString(hotelInput?.hotelName) ?? "",
+            email: asOptionalString(hotelInput?.email) ?? null,
+            phones: asOptionalStringArray(hotelInput?.phones),
+            postalCode: asOptionalString(hotelInput?.postalCode) ?? null,
+            street: asOptionalString(hotelInput?.street) ?? null,
+            hotelNumber: asOptionalString(hotelInput?.hotelNumber) ?? null,
+            neighborhood: asOptionalString(hotelInput?.neighborhood) ?? null,
+            city: asOptionalString(hotelInput?.city) ?? null,
+            state: asOptionalString(hotelInput?.state) ?? null,
+            country: asOptionalString(hotelInput?.country) ?? null,
+            nights: asOptionalInteger(hotelInput?.nights) ?? null,
+            checkInAt: asOptionalString(hotelInput?.checkInAt) ?? null,
+            checkOutAt: asOptionalString(hotelInput?.checkOutAt) ?? null,
             mealPlan: asOptionalString(hotelInput?.mealPlan) ?? null,
             roomType: asOptionalString(hotelInput?.roomType) ?? null,
             checkInTime: asOptionalString(hotelInput?.checkInTime) ?? null,
@@ -613,27 +667,7 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
 }
 
 export async function createVoucher(input: CreateVoucherInput) {
-  const { agencyId, reservationCode, webCheckinCode, clientName, flights, hotel, transfer } = input;
-  const hotelInput = (hotel ?? null) as
-    | {
-        hotelName?: unknown;
-        mealPlan?: unknown;
-        roomType?: unknown;
-        checkInTime?: unknown;
-        checkOutTime?: unknown;
-      }
-    | null;
-  const transferInput = (transfer ?? null) as { receptiveName?: unknown } | null;
-  const flightInputs = (Array.isArray(flights) ? flights : []) as Array<{
-    direction?: unknown;
-    flightDate?: unknown;
-    flightNumber?: unknown;
-    departureTime?: unknown;
-    arrivalTime?: unknown;
-    embarkAirport?: unknown;
-    disembarkAirport?: unknown;
-    connections?: unknown;
-  }>;
+  const { agencyId } = input;
 
   if (!agencyId) {
     return {
@@ -642,93 +676,11 @@ export async function createVoucher(input: CreateVoucherInput) {
       message: "Seu usuário não possui agencyId vinculado. Contate o suporte.",
     };
   }
-  if (!reservationCode || typeof reservationCode !== "string") {
-    return { ok: false as const, status: 400, message: "reservationCode é obrigatório" };
+
+  const normalized = normalizeVoucherPayload(input);
+  if (!normalized.ok) {
+    return normalized;
   }
-  if (!clientName || typeof clientName !== "string") {
-    return { ok: false as const, status: 400, message: "clientName é obrigatório" };
-  }
-  if (!Array.isArray(flights) || flights.length < 1) {
-    return { ok: false as const, status: 400, message: "flights é obrigatório" };
-  }
-
-  const hasOutbound = flightInputs.some((f) => f?.direction === "OUTBOUND");
-  const hasReturn = flightInputs.some((f) => f?.direction === "RETURN");
-  if (!hasOutbound || !hasReturn) {
-    return {
-      ok: false as const,
-      status: 400,
-      message: "Inclua flights com direction OUTBOUND e RETURN",
-    };
-  }
-
-  const flightsExpanded = flightInputs.flatMap((flightInput) => {
-    const direction =
-      flightInput.direction === "OUTBOUND" || flightInput.direction === "RETURN"
-        ? flightInput.direction
-        : null;
-
-    if (!direction) return [];
-
-    const finalDisembarkAirport = asOptionalString(flightInput.disembarkAirport);
-    const connectionInputs = (
-      Array.isArray(flightInput.connections) ? flightInput.connections : []
-    ) as Array<{
-      flightDate?: unknown;
-      flightNumber?: unknown;
-      embarkAirport?: unknown;
-      disembarkAirport?: unknown;
-      departureTime?: unknown;
-      arrivalTime?: unknown;
-    }>;
-
-    const connections = connectionInputs
-      .map((connectionInput) => ({
-        flightDate: asOptionalString(connectionInput.flightDate),
-        flightNumber: asOptionalString(connectionInput.flightNumber),
-        embarkAirport: asOptionalString(connectionInput.embarkAirport),
-        disembarkAirport: asOptionalString(connectionInput.disembarkAirport),
-        departureTime: asOptionalString(connectionInput.departureTime),
-        arrivalTime: asOptionalString(connectionInput.arrivalTime),
-      }))
-      .filter(
-        (connection) =>
-          !!connection.flightDate ||
-          !!connection.embarkAirport ||
-          !!connection.disembarkAirport ||
-          !!connection.flightNumber ||
-          !!connection.departureTime ||
-          !!connection.arrivalTime
-      );
-
-    const rows = [
-      {
-        direction,
-        segmentOrder: 0,
-        flightDate: asOptionalString(flightInput.flightDate),
-        flightNumber: asOptionalString(flightInput.flightNumber),
-        departureTime: asOptionalString(flightInput.departureTime),
-        arrivalTime: asOptionalString(flightInput.arrivalTime),
-        embarkAirport: asOptionalString(flightInput.embarkAirport),
-        disembarkAirport: finalDisembarkAirport,
-      },
-    ];
-
-    connections.forEach((connection, index) => {
-      rows.push({
-        direction,
-        segmentOrder: index + 1,
-        flightDate: connection.flightDate,
-        flightNumber: connection.flightNumber,
-        departureTime: connection.departureTime,
-        arrivalTime: connection.arrivalTime,
-        embarkAirport: connection.embarkAirport,
-        disembarkAirport: connection.disembarkAirport,
-      });
-    });
-
-    return rows;
-  });
 
   try {
     const publicCode = await generateUniquePublicCode();
@@ -737,11 +689,11 @@ export async function createVoucher(input: CreateVoucherInput) {
       data: {
         agencyId,
         publicCode,
-        reservationCode: reservationCode.trim(),
-        webCheckinCode: asOptionalString(webCheckinCode) ?? null,
-        clientName: clientName.trim(),
+        reservationCode: normalized.data.reservationCode,
+        webCheckinCode: normalized.data.webCheckinCode,
+        clientName: normalized.data.clientName,
         flights: {
-          create: flightsExpanded.map((flight) => ({
+          create: normalized.data.flights.map((flight) => ({
             direction: flight.direction,
             segmentOrder: flight.segmentOrder,
             flightDate: flight.flightDate,
@@ -752,19 +704,31 @@ export async function createVoucher(input: CreateVoucherInput) {
             disembarkAirport: flight.disembarkAirport,
           })),
         },
-        hotel: hotelInput
+        hotel: normalized.data.hotel
           ? {
               create: {
-                hotelName: hotelInput.hotelName?.toString() ?? "",
-                mealPlan: hotelInput.mealPlan?.toString(),
-                roomType: hotelInput.roomType?.toString(),
-                checkInTime: hotelInput.checkInTime?.toString(),
-                checkOutTime: hotelInput.checkOutTime?.toString(),
+                hotelName: normalized.data.hotel.hotelName,
+                email: normalized.data.hotel.email,
+                phones: normalized.data.hotel.phones,
+                postalCode: normalized.data.hotel.postalCode,
+                street: normalized.data.hotel.street,
+                hotelNumber: normalized.data.hotel.hotelNumber,
+                neighborhood: normalized.data.hotel.neighborhood,
+                city: normalized.data.hotel.city,
+                state: normalized.data.hotel.state,
+                country: normalized.data.hotel.country,
+                nights: normalized.data.hotel.nights,
+                checkInAt: normalized.data.hotel.checkInAt,
+                checkOutAt: normalized.data.hotel.checkOutAt,
+                mealPlan: normalized.data.hotel.mealPlan,
+                roomType: normalized.data.hotel.roomType,
+                checkInTime: normalized.data.hotel.checkInTime,
+                checkOutTime: normalized.data.hotel.checkOutTime,
               },
             }
           : undefined,
-        transfer: transferInput
-          ? { create: { receptiveName: transferInput.receptiveName?.toString() } }
+        transfer: normalized.data.transfer
+          ? { create: { receptiveName: normalized.data.transfer.receptiveName } }
           : undefined,
       },
       include: {
@@ -856,6 +820,18 @@ export async function updateVoucher(input: UpdateVoucherInput) {
           create: {
             voucherId: id,
             hotelName: normalized.data.hotel.hotelName,
+            email: normalized.data.hotel.email,
+            phones: normalized.data.hotel.phones,
+            postalCode: normalized.data.hotel.postalCode,
+            street: normalized.data.hotel.street,
+            hotelNumber: normalized.data.hotel.hotelNumber,
+            neighborhood: normalized.data.hotel.neighborhood,
+            city: normalized.data.hotel.city,
+            state: normalized.data.hotel.state,
+            country: normalized.data.hotel.country,
+            nights: normalized.data.hotel.nights,
+            checkInAt: normalized.data.hotel.checkInAt,
+            checkOutAt: normalized.data.hotel.checkOutAt,
             mealPlan: normalized.data.hotel.mealPlan,
             roomType: normalized.data.hotel.roomType,
             checkInTime: normalized.data.hotel.checkInTime,
@@ -863,6 +839,18 @@ export async function updateVoucher(input: UpdateVoucherInput) {
           },
           update: {
             hotelName: normalized.data.hotel.hotelName,
+            email: normalized.data.hotel.email,
+            phones: normalized.data.hotel.phones,
+            postalCode: normalized.data.hotel.postalCode,
+            street: normalized.data.hotel.street,
+            hotelNumber: normalized.data.hotel.hotelNumber,
+            neighborhood: normalized.data.hotel.neighborhood,
+            city: normalized.data.hotel.city,
+            state: normalized.data.hotel.state,
+            country: normalized.data.hotel.country,
+            nights: normalized.data.hotel.nights,
+            checkInAt: normalized.data.hotel.checkInAt,
+            checkOutAt: normalized.data.hotel.checkOutAt,
             mealPlan: normalized.data.hotel.mealPlan,
             roomType: normalized.data.hotel.roomType,
             checkInTime: normalized.data.hotel.checkInTime,
@@ -947,3 +935,89 @@ export async function getVoucherById(agencyId: string, id: string) {
 
   return { ok: true as const, data: { ...voucher, flights: sortFlights(voucher.flights) } };
 }
+
+type LookupPostalCodeInput = {
+  countryCode?: unknown;
+  postalCode?: unknown;
+};
+
+export async function lookupPostalCode(input: LookupPostalCodeInput) {
+  const countryCode = String(input.countryCode ?? "BR").trim().toUpperCase();
+  const postalCodeRaw = String(input.postalCode ?? "").trim();
+
+  if (!postalCodeRaw) {
+    return { ok: false as const, status: 400, message: "postalCode e obrigatorio" };
+  }
+
+  if (countryCode === "BR") {
+    const cep = postalCodeRaw.replace(/\D/g, "");
+    if (cep.length !== 8) {
+      return { ok: false as const, status: 400, message: "CEP invalido. Use 8 digitos." };
+    }
+
+    const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    if (!response.ok) {
+      return { ok: false as const, status: 502, message: "Falha ao consultar CEP." };
+    }
+
+    const data = (await response.json()) as {
+      erro?: boolean;
+      cep?: string;
+      logradouro?: string;
+      bairro?: string;
+      localidade?: string;
+      uf?: string;
+    };
+
+    if (data.erro) {
+      return { ok: false as const, status: 404, message: "CEP nao encontrado." };
+    }
+
+    return {
+      ok: true as const,
+      data: {
+        countryCode: "BR",
+        country: "Brasil",
+        postalCode: data.cep ?? cep,
+        street: data.logradouro ?? null,
+        neighborhood: data.bairro ?? null,
+        city: data.localidade ?? null,
+        state: data.uf ?? null,
+      },
+    };
+  }
+
+  const response = await fetch(
+    `https://api.zippopotam.us/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCodeRaw)}`
+  );
+
+  if (response.status === 404) {
+    return { ok: false as const, status: 404, message: "Codigo postal nao encontrado." };
+  }
+
+  if (!response.ok) {
+    return { ok: false as const, status: 502, message: "Falha ao consultar codigo postal." };
+  }
+
+  const data = (await response.json()) as {
+    "country abbreviation"?: string;
+    country?: string;
+    "post code"?: string;
+    places?: Array<{ "place name"?: string; state?: string }>;
+  };
+  const firstPlace = Array.isArray(data.places) ? data.places[0] : undefined;
+
+  return {
+    ok: true as const,
+    data: {
+      countryCode: data["country abbreviation"] ?? countryCode,
+      country: data.country ?? countryCode,
+      postalCode: data["post code"] ?? postalCodeRaw,
+      street: null,
+      neighborhood: null,
+      city: firstPlace?.["place name"] ?? null,
+      state: firstPlace?.state ?? null,
+    },
+  };
+}
+

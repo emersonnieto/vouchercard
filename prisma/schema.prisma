@@ -78,14 +78,26 @@ model Flight {
 }
 
 model Hotel {
-  id          String  @id @default(uuid())
-  voucherId   String  @unique
+  id           String   @id @default(uuid())
+  voucherId    String   @unique
 
-  hotelName   String
-  mealPlan    String? // Regime de alimentação
-  roomType    String? // Tipo apartamento
-  checkInTime String? // ex: "14:00"
-  checkOutTime String? // ex: "12:00"
+  hotelName    String
+  email        String?
+  phones       String[] @default([])
+  postalCode   String?
+  street       String?
+  hotelNumber  String?
+  neighborhood String?
+  city         String?
+  state        String?
+  country      String?
+  nights       Int?
+  checkInAt    String?
+  checkOutAt   String?
+  mealPlan     String? // Regime de alimentacao
+  roomType     String? // Tipo apartamento
+  checkInTime  String? // legado ex: "14:00"
+  checkOutTime String? // legado ex: "12:00"
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
@@ -98,4 +110,5 @@ model Transfer {
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
+
 
