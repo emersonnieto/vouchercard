@@ -151,14 +151,12 @@ function normalizeVoucherPayload(
         city?: unknown;
         state?: unknown;
         country?: unknown;
-        nights?: unknown;
-        checkInAt?: unknown;
-        checkOutAt?: unknown;
-        mealPlan?: unknown;
-        roomType?: unknown;
-        checkInTime?: unknown;
-        checkOutTime?: unknown;
-      }
+      nights?: unknown;
+      checkInAt?: unknown;
+      checkOutAt?: unknown;
+      mealPlan?: unknown;
+      roomType?: unknown;
+    }
     | null;
   const transferInput = (transfer ?? null) as { receptiveName?: unknown } | null;
   const flightInputs = (Array.isArray(flights) ? flights : []) as Array<{
@@ -280,9 +278,7 @@ function normalizeVoucherPayload(
     !!asOptionalString(hotelInput?.checkInAt) ||
     !!asOptionalString(hotelInput?.checkOutAt) ||
     !!asOptionalString(hotelInput?.mealPlan) ||
-    !!asOptionalString(hotelInput?.roomType) ||
-    !!asOptionalString(hotelInput?.checkInTime) ||
-    !!asOptionalString(hotelInput?.checkOutTime);
+    !!asOptionalString(hotelInput?.roomType);
 
   if (hasHotelData && !asOptionalString(hotelInput?.hotelName)) {
     return { ok: false as const, status: 400, message: "hotel.hotelName Ã© obrigatÃ³rio" };
@@ -312,8 +308,6 @@ function normalizeVoucherPayload(
             checkOutAt: asOptionalString(hotelInput?.checkOutAt) ?? null,
             mealPlan: asOptionalString(hotelInput?.mealPlan) ?? null,
             roomType: asOptionalString(hotelInput?.roomType) ?? null,
-            checkInTime: asOptionalString(hotelInput?.checkInTime) ?? null,
-            checkOutTime: asOptionalString(hotelInput?.checkOutTime) ?? null,
           }
         : null,
       transfer: asOptionalString(transferInput?.receptiveName)
@@ -722,8 +716,6 @@ export async function createVoucher(input: CreateVoucherInput) {
                 checkOutAt: normalized.data.hotel.checkOutAt,
                 mealPlan: normalized.data.hotel.mealPlan,
                 roomType: normalized.data.hotel.roomType,
-                checkInTime: normalized.data.hotel.checkInTime,
-                checkOutTime: normalized.data.hotel.checkOutTime,
               },
             }
           : undefined,
@@ -834,8 +826,6 @@ export async function updateVoucher(input: UpdateVoucherInput) {
             checkOutAt: normalized.data.hotel.checkOutAt,
             mealPlan: normalized.data.hotel.mealPlan,
             roomType: normalized.data.hotel.roomType,
-            checkInTime: normalized.data.hotel.checkInTime,
-            checkOutTime: normalized.data.hotel.checkOutTime,
           },
           update: {
             hotelName: normalized.data.hotel.hotelName,
@@ -853,8 +843,6 @@ export async function updateVoucher(input: UpdateVoucherInput) {
             checkOutAt: normalized.data.hotel.checkOutAt,
             mealPlan: normalized.data.hotel.mealPlan,
             roomType: normalized.data.hotel.roomType,
-            checkInTime: normalized.data.hotel.checkInTime,
-            checkOutTime: normalized.data.hotel.checkOutTime,
           },
         });
       } else {
