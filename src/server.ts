@@ -181,6 +181,14 @@ function parseCsvEnv(value: string | undefined) {
     .filter(Boolean);
 }
 
+function normalizeOrigin(origin: string) {
+  try {
+    return new URL(origin.trim()).origin;
+  } catch {
+    return origin.trim().replace(/\/+$/, "");
+  }
+}
+
 function readPositiveIntEnv(name: string, fallback: number) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -193,7 +201,18 @@ function readPositiveIntEnv(name: string, fallback: number) {
   return Math.floor(parsed);
 }
 
-const allowedOrigins = parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS);
+const defaultAllowedOrigins = [
+  "https://admin.vouchercard.com.br",
+  "https://vouchercard-admin.vercel.app",
+];
+
+const allowedOrigins = Array.from(
+  new Set(
+    [...parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS), ...defaultAllowedOrigins]
+      .map(normalizeOrigin)
+      .filter(Boolean)
+  )
+);
 const hasCorsWhitelist = allowedOrigins.length > 0;
 
 const loginRateLimitWindowMs = readPositiveIntEnv(
@@ -251,7 +270,13 @@ app.use(
         return;
       }
 
-      if (!isProduction || !hasCorsWhitelist || allowedOrigins.includes(origin)) {
+      const normalizedOrigin = normalizeOrigin(origin);
+
+      if (
+        !isProduction ||
+        !hasCorsWhitelist ||
+        allowedOrigins.includes(normalizedOrigin)
+      ) {
         callback(null, true);
         return;
       }

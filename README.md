@@ -100,6 +100,7 @@ npm run dev
 - Não versionar `.env`
 
 - Em producao, configure `CORS_ALLOWED_ORIGINS` para ativar whitelist; sem ela, a API sobe com warning e libera todas as origens
+- Whitelist padrao inclui `https://admin.vouchercard.com.br` e `https://vouchercard-admin.vercel.app`; mantenha `CORS_ALLOWED_ORIGINS` atualizado quando adicionar novos frontends
 - `TRUST_PROXY=true` e recomendado quando a API fica atras de proxy/load balancer
 - Os rate limits continuam locais por instancia; para multi-instancia, substitua por um storage compartilhado
 
