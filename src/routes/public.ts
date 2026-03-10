@@ -6,6 +6,7 @@ export const publicRouter = Router();
 
 const voucherPublicInclude = {
   flights: true,
+  tours: true,
   hotel: true,
   transfer: true,
   agency: {
@@ -53,7 +54,9 @@ publicRouter.get("/vouchers/:publicCode", async (req: Request, res: Response) =>
         a.segmentOrder - b.segmentOrder
     );
 
-    return res.json({ ...voucher, flights: flightsSorted });
+    const toursSorted = [...voucher.tours].sort((a, b) => a.sortOrder - b.sortOrder);
+
+    return res.json({ ...voucher, flights: flightsSorted, tours: toursSorted });
   } catch (err) {
     console.error("[PUBLIC] erro:", err);
     return res.status(500).json({ message: "Erro interno" });

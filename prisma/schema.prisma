@@ -46,6 +46,10 @@ model Voucher {
   reservationCode String
   webCheckinCode  String?
   clientName      String
+  insuranceProvider String?
+  insurancePhone    String?
+  insuranceEmail    String?
+  additionalNotes   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -53,6 +57,7 @@ model Voucher {
   flights  Flight[]
   hotel    Hotel?
   transfer Transfer?
+  tours    Tour[]
 
   @@unique([agencyId, reservationCode])
 }
@@ -109,6 +114,21 @@ model Transfer {
   receptiveName String? // Nome receptivo
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+}
+
+model Tour {
+  id            String @id @default(uuid())
+  voucherId      String
+  sortOrder      Int    @default(0)
+  tourDate       String?
+  departureTime  String?
+  location       String?
+  receptiveName  String?
+
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@index([voucherId])
+  @@index([voucherId, sortOrder])
 }
 
 

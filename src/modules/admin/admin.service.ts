@@ -42,6 +42,11 @@ type CreateVoucherInput = {
   reservationCode?: unknown;
   webCheckinCode?: unknown;
   clientName?: unknown;
+  insuranceProvider?: unknown;
+  insurancePhone?: unknown;
+  insuranceEmail?: unknown;
+  additionalNotes?: unknown;
+  tours?: unknown;
   flights?: unknown;
   hotel?: unknown;
   transfer?: unknown;
@@ -53,6 +58,11 @@ type UpdateVoucherInput = {
   reservationCode?: unknown;
   webCheckinCode?: unknown;
   clientName?: unknown;
+  insuranceProvider?: unknown;
+  insurancePhone?: unknown;
+  insuranceEmail?: unknown;
+  additionalNotes?: unknown;
+  tours?: unknown;
   flights?: unknown;
   hotel?: unknown;
   transfer?: unknown;
@@ -137,7 +147,19 @@ async function generateUniquePublicCode() {
 function normalizeVoucherPayload(
   input: Omit<CreateVoucherInput, "agencyId">,
 ) {
-  const { reservationCode, webCheckinCode, clientName, flights, hotel, transfer } = input;
+  const {
+    reservationCode,
+    webCheckinCode,
+    clientName,
+    insuranceProvider,
+    insurancePhone,
+    insuranceEmail,
+    additionalNotes,
+    tours,
+    flights,
+    hotel,
+    transfer,
+  } = input;
 
   const hotelInput = (hotel ?? null) as
     | {
@@ -159,6 +181,12 @@ function normalizeVoucherPayload(
     }
     | null;
   const transferInput = (transfer ?? null) as { receptiveName?: unknown } | null;
+  const tourInputs = (Array.isArray(tours) ? tours : []) as Array<{
+    tourDate?: unknown;
+    departureTime?: unknown;
+    location?: unknown;
+    receptiveName?: unknown;
+  }>;
   const flightInputs = (Array.isArray(flights) ? flights : []) as Array<{
     direction?: unknown;
     flightDate?: unknown;
@@ -263,6 +291,19 @@ function normalizeVoucherPayload(
     return rows;
   });
 
+  const normalizedTours = tourInputs
+    .map((tourInput, index) => ({
+      sortOrder: index,
+      tourDate: asOptionalString(tourInput.tourDate) ?? null,
+      departureTime: asOptionalString(tourInput.departureTime) ?? null,
+      location: asOptionalString(tourInput.location) ?? null,
+      receptiveName: asOptionalString(tourInput.receptiveName) ?? null,
+    }))
+    .filter(
+      (tour) =>
+        !!tour.tourDate || !!tour.departureTime || !!tour.location || !!tour.receptiveName
+    );
+
   const hasHotelData =
     !!asOptionalString(hotelInput?.hotelName) ||
     !!asOptionalString(hotelInput?.email) ||
@@ -290,6 +331,11 @@ function normalizeVoucherPayload(
       reservationCode: reservationCode.trim(),
       webCheckinCode: asOptionalString(webCheckinCode) ?? null,
       clientName: clientName.trim(),
+      insuranceProvider: asOptionalString(insuranceProvider) ?? null,
+      insurancePhone: asOptionalString(insurancePhone) ?? null,
+      insuranceEmail: asOptionalString(insuranceEmail) ?? null,
+      additionalNotes: asOptionalString(additionalNotes) ?? null,
+      tours: normalizedTours,
       flights: flightsExpanded,
       hotel: hasHotelData
         ? {
@@ -686,6 +732,10 @@ export async function createVoucher(input: CreateVoucherInput) {
         reservationCode: normalized.data.reservationCode,
         webCheckinCode: normalized.data.webCheckinCode,
         clientName: normalized.data.clientName,
+        insuranceProvider: normalized.data.insuranceProvider,
+        insurancePhone: normalized.data.insurancePhone,
+        insuranceEmail: normalized.data.insuranceEmail,
+        additionalNotes: normalized.data.additionalNotes,
         flights: {
           create: normalized.data.flights.map((flight) => ({
             direction: flight.direction,
@@ -696,6 +746,15 @@ export async function createVoucher(input: CreateVoucherInput) {
             arrivalTime: flight.arrivalTime,
             embarkAirport: flight.embarkAirport,
             disembarkAirport: flight.disembarkAirport,
+          })),
+        },
+        tours: {
+          create: normalized.data.tours.map((tour) => ({
+            sortOrder: tour.sortOrder,
+            tourDate: tour.tourDate,
+            departureTime: tour.departureTime,
+            location: tour.location,
+            receptiveName: tour.receptiveName,
           })),
         },
         hotel: normalized.data.hotel
@@ -725,6 +784,7 @@ export async function createVoucher(input: CreateVoucherInput) {
       },
       include: {
         flights: true,
+        tours: true,
         hotel: true,
         transfer: true,
         agency: {
@@ -742,7 +802,15 @@ export async function createVoucher(input: CreateVoucherInput) {
       },
     });
 
-    return { ok: true as const, status: 201, data: { ...created, flights: sortFlights(created.flights) } };
+    return {
+      ok: true as const,
+      status: 201,
+      data: {
+        ...created,
+        flights: sortFlights(created.flights),
+        tours: [...created.tours].sort((a, b) => a.sortOrder - b.sortOrder),
+      },
+    };
   } catch (err: any) {
     if (err?.code === "P2002") {
       return { ok: false as const, status: 409, message: "reservationCode já existe" };
@@ -787,10 +855,15 @@ export async function updateVoucher(input: UpdateVoucherInput) {
           reservationCode: normalized.data.reservationCode,
           webCheckinCode: normalized.data.webCheckinCode,
           clientName: normalized.data.clientName,
+          insuranceProvider: normalized.data.insuranceProvider,
+          insurancePhone: normalized.data.insurancePhone,
+          insuranceEmail: normalized.data.insuranceEmail,
+          additionalNotes: normalized.data.additionalNotes,
         },
       });
 
       await tx.flight.deleteMany({ where: { voucherId: id } });
+      await tx.tour.deleteMany({ where: { voucherId: id } });
 
       await tx.flight.createMany({
         data: normalized.data.flights.map((flight) => ({
@@ -805,6 +878,19 @@ export async function updateVoucher(input: UpdateVoucherInput) {
           disembarkAirport: flight.disembarkAirport,
         })),
       });
+
+      if (normalized.data.tours.length) {
+        await tx.tour.createMany({
+          data: normalized.data.tours.map((tour) => ({
+            voucherId: id,
+            sortOrder: tour.sortOrder,
+            tourDate: tour.tourDate,
+            departureTime: tour.departureTime,
+            location: tour.location,
+            receptiveName: tour.receptiveName,
+          })),
+        });
+      }
 
       if (normalized.data.hotel) {
         await tx.hotel.upsert({
@@ -867,14 +953,21 @@ export async function updateVoucher(input: UpdateVoucherInput) {
 
     const updated = await prisma.voucher.findFirst({
       where: { id, agencyId },
-      include: { flights: true, hotel: true, transfer: true },
+      include: { flights: true, tours: true, hotel: true, transfer: true },
     });
 
     if (!updated) {
       return { ok: false as const, status: 404, message: "Voucher nÃ£o encontrado" };
     }
 
-    return { ok: true as const, data: { ...updated, flights: sortFlights(updated.flights) } };
+    return {
+      ok: true as const,
+      data: {
+        ...updated,
+        flights: sortFlights(updated.flights),
+        tours: [...updated.tours].sort((a, b) => a.sortOrder - b.sortOrder),
+      },
+    };
   } catch (err: any) {
     if (err?.code === "P2002") {
       return { ok: false as const, status: 409, message: "reservationCode jÃ¡ existe" };
@@ -914,14 +1007,21 @@ export async function getVoucherById(agencyId: string, id: string) {
 
   const voucher = await prisma.voucher.findFirst({
     where: { id, agencyId },
-    include: { flights: true, hotel: true, transfer: true },
+    include: { flights: true, tours: true, hotel: true, transfer: true },
   });
 
   if (!voucher) {
     return { ok: false as const, status: 404, message: "Voucher não encontrado" };
   }
 
-  return { ok: true as const, data: { ...voucher, flights: sortFlights(voucher.flights) } };
+  return {
+    ok: true as const,
+    data: {
+      ...voucher,
+      flights: sortFlights(voucher.flights),
+      tours: [...voucher.tours].sort((a, b) => a.sortOrder - b.sortOrder),
+    },
+  };
 }
 
 type LookupPostalCodeInput = {
