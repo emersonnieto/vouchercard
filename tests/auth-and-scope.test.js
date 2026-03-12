@@ -5,6 +5,11 @@ const {
   signJwt,
   verifyJwt,
 } = require("../src/auth/jwt");
+const {
+  readSuperadminEmailAllowlist,
+  resolveAgencyUserRole,
+  resolveLoginUserRole,
+} = require("../src/auth/userRoles");
 const { requireAuth } = require("../src/middlewares/requireAuth");
 const { requireRole } = require("../src/middlewares/requireRole");
 const { resolveVoucherAgencyId } = require("../src/modules/admin/voucherScope");
@@ -168,4 +173,42 @@ test("resolveVoucherAgencyId falls back to token agency for SUPERADMIN when no e
   });
 
   assert.equal(agencyId, "agency-from-token");
+});
+
+test("resolveLoginUserRole keeps SUPERADMIN only for allowlisted emails", () => {
+  const allowlist = readSuperadminEmailAllowlist(
+    "owner@example.com, ops@example.com "
+  );
+
+  assert.equal(
+    resolveLoginUserRole({
+      dbRole: "SUPERADMIN",
+      email: "owner@example.com",
+      allowedSuperadminEmails: allowlist,
+    }),
+    "SUPERADMIN"
+  );
+
+  assert.equal(
+    resolveLoginUserRole({
+      dbRole: "SUPERADMIN",
+      email: "agency@example.com",
+      allowedSuperadminEmails: allowlist,
+    }),
+    "ADMIN"
+  );
+});
+
+test("resolveAgencyUserRole rejects SUPERADMIN in agency flow", () => {
+  assert.deepEqual(resolveAgencyUserRole(undefined), {
+    ok: true,
+    role: "ADMIN",
+  });
+
+  assert.deepEqual(resolveAgencyUserRole("ADMIN"), {
+    ok: true,
+    role: "ADMIN",
+  });
+
+  assert.equal(resolveAgencyUserRole("SUPERADMIN").ok, false);
 });

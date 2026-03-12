@@ -1,12 +1,18 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma";
-import { signJwt, UserRole } from "../auth/jwt";
+import { signJwt } from "../auth/jwt";
+import {
+  readSuperadminEmailAllowlist,
+  resolveLoginUserRole,
+} from "../auth/userRoles";
 import { requireAuth, AuthedRequest } from "../middlewares/requireAuth";
 
 export const authRouter = Router();
 
-const ALLOWED_ROLES: UserRole[] = ["SUPERADMIN", "ADMIN", "AGENCY"];
+const allowedSuperadminEmails = readSuperadminEmailAllowlist(
+  process.env.SUPERADMIN_EMAILS
+);
 
 /**
  * POST /auth/login
@@ -47,10 +53,11 @@ authRouter.post("/login", async (req, res) => {
     }
 
     // ✅ bloqueio: se agência estiver inativa, não deixa logar (exceto SUPERADMIN)
-    const roleFromDb = String(user.role).toUpperCase();
-    const role: UserRole = ALLOWED_ROLES.includes(roleFromDb as UserRole)
-      ? (roleFromDb as UserRole)
-      : "ADMIN";
+    const role = resolveLoginUserRole({
+      dbRole: user.role,
+      email: user.email,
+      allowedSuperadminEmails,
+    });
 
     if (role !== "SUPERADMIN") {
       const agencyId = user.agencyId ? String(user.agencyId) : "";
@@ -85,7 +92,7 @@ authRouter.post("/login", async (req, res) => {
         agencyId: user.agencyId,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role,
         createdAt: user.createdAt,
       },
     });

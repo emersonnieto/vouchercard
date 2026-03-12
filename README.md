@@ -45,6 +45,7 @@ npm install
 ```env
 DATABASE_URL=postgresql://user:pass@host:5432/db
 JWT_SECRET=seu_segredo_forte
+SUPERADMIN_EMAILS=owner@seudominio.com,ops@seudominio.com
 CORS_ALLOWED_ORIGINS=https://admin.seudominio.com,https://app.seudominio.com
 TRUST_PROXY=true
 LOGIN_RATE_LIMIT_WINDOW_MS=900000
@@ -103,6 +104,7 @@ npm run dev
 - Whitelist padrao inclui `https://admin.vouchercard.com.br` e `https://vouchercard-admin.vercel.app`; mantenha `CORS_ALLOWED_ORIGINS` atualizado quando adicionar novos frontends
 - `TRUST_PROXY=true` e recomendado quando a API fica atras de proxy/load balancer
 - Os rate limits continuam locais por instancia; para multi-instancia, substitua por um storage compartilhado
+- `SUPERADMIN` so e reconhecido no login quando o email estiver em `SUPERADMIN_EMAILS`; criar usuario por agencia gera apenas `ADMIN`
 
 ## Estado atual
 

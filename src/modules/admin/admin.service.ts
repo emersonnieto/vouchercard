@@ -1,8 +1,7 @@
 import bcrypt from "bcrypt";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../../lib/prisma";
-
-type UserRole = "SUPERADMIN" | "ADMIN";
+import { resolveAgencyUserRole } from "../../auth/userRoles";
 
 type CreateAgencyInput = {
   name?: unknown;
@@ -67,10 +66,6 @@ type UpdateVoucherInput = {
   hotel?: unknown;
   transfer?: unknown;
 };
-
-function isUserRole(value: unknown): value is UserRole {
-  return value === "SUPERADMIN" || value === "ADMIN";
-}
 
 const flightOrder: Record<string, number> = { OUTBOUND: 0, RETURN: 1 };
 const MAX_LOGO_BYTES = 7 * 1024 * 1024;
@@ -675,8 +670,13 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
     return { ok: false as const, status: 404, message: "Agência não encontrada" };
   }
 
+  const resolvedRole = resolveAgencyUserRole(role);
+  if (!resolvedRole.ok) {
+    return { ok: false as const, status: 400, message: resolvedRole.message };
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
-  const finalRole: UserRole = isUserRole(role) ? role : "ADMIN";
+  const finalRole = resolvedRole.role;
 
   try {
     const user = await prisma.user.create({
