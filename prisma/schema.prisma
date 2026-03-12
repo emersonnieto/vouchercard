@@ -11,20 +11,48 @@ enum FlightDirection {
   RETURN
 }
 
+enum SubscriptionPlan {
+  MONTHLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  PENDING
+  CHECKOUT_CREATED
+  CHECKOUT_EXPIRED
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
 model Agency {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  phone     String?
-  email     String?
-  createdAt DateTime @default(now())
+  id              String               @id @default(uuid())
+  name            String
+  slug            String               @unique
+  phone           String?
+  email           String?
+  contactName     String?
+  document        String?
+  postalCode      String?
+  street          String?
+  addressNumber   String?
+  complement      String?
+  neighborhood    String?
+  city            String?
+  state           String?
+  website         String?
+  asaasCustomerId String?              @unique
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @default(now()) @updatedAt
 
-  isActive  Boolean  @default(true) // ✅ NOVO
-  logoUrl   String?               // ✅ (já aproveita)
-  primaryColor String?            // ✅ opcional
+  isActive        Boolean              @default(true)
+  logoUrl         String?
+  primaryColor    String?
 
-  vouchers  Voucher[]
-  users     User[]
+  subscriptions   AgencySubscription[]
+  vouchers        Voucher[]
+  users           User[]
 }
 
 model User {
@@ -40,18 +68,18 @@ model User {
 }
 
 model Voucher {
-  id              String   @id @default(uuid())
-  agencyId        String
-  publicCode      String   @unique
-  reservationCode String
-  webCheckinCode  String?
-  clientName      String
+  id                String   @id @default(uuid())
+  agencyId          String
+  publicCode        String   @unique
+  reservationCode   String
+  webCheckinCode    String?
+  clientName        String
   insuranceProvider String?
   insurancePhone    String?
   insuranceEmail    String?
   additionalNotes   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   agency   Agency  @relation(fields: [agencyId], references: [id])
   flights  Flight[]
@@ -63,17 +91,15 @@ model Voucher {
 }
 
 model Flight {
-  id             String          @id @default(uuid())
-  voucherId       String
-  direction       FlightDirection @default(OUTBOUND)
-  segmentOrder    Int             @default(0)
-
-  flightNumber    String?
-  flightDate      String?
-  // MVP: só horário, sem data (ex: "14:00")
-  departureTime   String?
-  arrivalTime     String?
-  embarkAirport   String?
+  id               String          @id @default(uuid())
+  voucherId        String
+  direction        FlightDirection @default(OUTBOUND)
+  segmentOrder     Int             @default(0)
+  flightNumber     String?
+  flightDate       String?
+  departureTime    String?
+  arrivalTime      String?
+  embarkAirport    String?
   disembarkAirport String?
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
@@ -85,7 +111,6 @@ model Flight {
 model Hotel {
   id           String   @id @default(uuid())
   voucherId    String   @unique
-
   hotelName    String
   email        String?
   phones       String[] @default([])
@@ -99,10 +124,10 @@ model Hotel {
   nights       Int?
   checkInAt    String?
   checkOutAt   String?
-  mealPlan     String? // Regime de alimentacao
-  roomType     String? // Tipo apartamento
-  checkInTime  String? // legado ex: "14:00"
-  checkOutTime String? // legado ex: "12:00"
+  mealPlan     String?
+  roomType     String?
+  checkInTime  String?
+  checkOutTime String?
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
@@ -110,20 +135,19 @@ model Hotel {
 model Transfer {
   id            String @id @default(uuid())
   voucherId     String @unique
-
-  receptiveName String? // Nome receptivo
+  receptiveName String?
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 }
 
 model Tour {
   id            String @id @default(uuid())
-  voucherId      String
-  sortOrder      Int    @default(0)
-  tourDate       String?
-  departureTime  String?
-  location       String?
-  receptiveName  String?
+  voucherId     String
+  sortOrder     Int    @default(0)
+  tourDate      String?
+  departureTime String?
+  location      String?
+  receptiveName String?
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 
@@ -131,4 +155,51 @@ model Tour {
   @@index([voucherId, sortOrder])
 }
 
+model AgencySubscription {
+  id                     String             @id @default(uuid())
+  agencyId               String
+  publicToken            String             @unique
+  provider               String             @default("ASAAS")
+  plan                   SubscriptionPlan
+  status                 SubscriptionStatus @default(PENDING)
+  billingCycleMonths     Int                @default(1)
+  commitmentMonths       Int                @default(1)
+  price                  Decimal            @db.Decimal(10, 2)
+  currency               String             @default("BRL")
+  checkoutUrl            String?
+  providerCustomerId     String?
+  providerCheckoutId     String?            @unique
+  providerSubscriptionId String?            @unique
+  latestPaymentId        String?
+  checkoutExpiresAt      DateTime?
+  activatedAt            DateTime?
+  canceledAt             DateTime?
+  lastEventAt            DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId, createdAt])
+  @@index([providerCustomerId])
+  @@index([providerSubscriptionId])
+}
+
+model BillingWebhookEvent {
+  id         String   @id
+  provider   String
+  event      String
+  payload    Json
+  receivedAt DateTime @default(now())
+
+  @@index([provider, event])
+}
+
+model AppRateLimit {
+  key       String   @id
+  count     Int
+  resetAt   DateTime @map("reset_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@map("app_rate_limits")
+}

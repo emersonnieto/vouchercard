@@ -4,11 +4,14 @@ import cors from "cors";
 import { prisma } from "./lib/prisma";
 import { adminRouter } from "./routes/admin";
 import { authRouter } from "./routes/auth";
+import { billingRouter } from "./routes/billing";
 import { publicRouter } from "./routes/public";
+import { handleAsaasWebhook } from "./routes/webhooks";
 import { requireAuth } from "./middlewares/requireAuth";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+
 
 type RateLimitOptions = {
   keyPrefix: string;
@@ -202,8 +205,11 @@ function readPositiveIntEnv(name: string, fallback: number) {
 }
 
 const defaultAllowedOrigins = [
+  "https://vouchercard.com.br",
+  "https://www.vouchercard.com.br",
   "https://admin.vouchercard.com.br",
   "https://vouchercard-admin.vercel.app",
+  "http://localhost:5173",
 ];
 
 const allowedOrigins = Array.from(
@@ -228,6 +234,11 @@ const publicVoucherRateLimitMax = readPositiveIntEnv(
   "PUBLIC_VOUCHER_RATE_LIMIT_MAX",
   60
 );
+const signupRateLimitWindowMs = readPositiveIntEnv(
+  "SIGNUP_RATE_LIMIT_WINDOW_MS",
+  60 * 60 * 1000
+);
+const signupRateLimitMax = readPositiveIntEnv("SIGNUP_RATE_LIMIT_MAX", 10);
 
 const loginRateLimit = createRateLimiter({
   keyPrefix: "login",
@@ -246,6 +257,19 @@ const publicVoucherRateLimit = createRateLimiter({
   keyPrefix: "public-voucher",
   windowMs: publicVoucherRateLimitWindowMs,
   max: publicVoucherRateLimitMax,
+});
+
+const signupRateLimit = createRateLimiter({
+  keyPrefix: "public-signup",
+  windowMs: signupRateLimitWindowMs,
+  max: signupRateLimitMax,
+  keyFn: (req) => {
+    const email =
+      typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+    return `${req.ip}:${email}`;
+  },
 });
 
 app.disable("x-powered-by");
@@ -331,6 +355,10 @@ app.use("/auth", authRouter);
  */
 app.use("/public/vouchers", publicVoucherRateLimit);
 app.use("/public", publicRouter);
+app.use("/public/billing/signup", signupRateLimit);
+app.use("/public/billing", billingRouter);
+
+app.post("/webhooks/asaas", handleAsaasWebhook);
 
 /**
  * 🔒 Rotas administrativas (painel) protegidas por JWT
