@@ -29,6 +29,7 @@ type AsaasCheckoutPayload = {
     successUrl: string;
     cancelUrl: string;
     expiredUrl: string;
+    autoRedirect: boolean;
   };
   items: Array<{
     name: string;
@@ -111,6 +112,7 @@ export class AsaasClient {
         successUrl: `${this.frontendAppUrl}/assinatura/sucesso?session=${input.sessionToken}`,
         cancelUrl: `${this.frontendAppUrl}/assinatura/cancelado?session=${input.sessionToken}`,
         expiredUrl: `${this.frontendAppUrl}/assinatura/expirado?session=${input.sessionToken}`,
+        autoRedirect: true,
       },
       items: [
         {
