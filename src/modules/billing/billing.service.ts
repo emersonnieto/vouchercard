@@ -271,6 +271,7 @@ export async function getSignupSession(publicToken: string) {
       plan: true,
       status: true,
       checkoutUrl: true,
+      providerCheckoutId: true,
       checkoutExpiresAt: true,
       activatedAt: true,
       createdAt: true,
@@ -299,7 +300,10 @@ export async function getSignupSession(publicToken: string) {
     activatedAt: subscription.activatedAt,
     checkoutExpiresAt: subscription.checkoutExpiresAt,
     createdAt: subscription.createdAt,
-    checkoutUrl: subscription.checkoutUrl,
+    checkoutUrl: normalizeCheckoutUrl(
+      subscription.checkoutUrl,
+      subscription.providerCheckoutId
+    ),
     agency: subscription.agency,
     plan: publicPlan
       ? {
@@ -310,6 +314,42 @@ export async function getSignupSession(publicToken: string) {
         }
       : null,
   };
+}
+
+function normalizeCheckoutUrl(
+  checkoutUrl: string | null,
+  providerCheckoutId: string | null
+) {
+  const trimmedUrl = checkoutUrl?.trim() || "";
+
+  if (trimmedUrl.includes("/checkoutSession/show?id=")) {
+    return trimmedUrl.replace(
+      "/checkoutSession/show?id=",
+      "/checkoutSession/show/"
+    );
+  }
+
+  if (trimmedUrl) {
+    return trimmedUrl;
+  }
+
+  if (!providerCheckoutId) {
+    return null;
+  }
+
+  const baseUrl =
+    process.env.ASAAS_CHECKOUT_BASE_URL?.trim() ||
+    "https://sandbox.asaas.com/checkoutSession/show/";
+
+  if (baseUrl.includes("{id}")) {
+    return baseUrl.replace("{id}", providerCheckoutId);
+  }
+
+  if (baseUrl.includes("?id=")) {
+    return `${baseUrl}${providerCheckoutId}`;
+  }
+
+  return `${baseUrl.replace(/\/+$/, "")}/${providerCheckoutId}`;
 }
 
 export async function handleAsaasWebhookEvent(

@@ -55,6 +55,8 @@ type AsaasCheckoutPayload = {
 
 type AsaasCheckoutResponse = {
   id: string;
+  link?: string;
+  status?: string;
 };
 
 type AsaasErrorPayload = {
@@ -90,7 +92,7 @@ export class AsaasClient {
 
   private readonly checkoutBaseUrl = getRequiredEnv(
     "ASAAS_CHECKOUT_BASE_URL",
-    "https://asaas.com/checkoutSession/show?id="
+    "https://sandbox.asaas.com/checkoutSession/show/"
   );
 
   private readonly frontendAppUrl = getRequiredEnv(
@@ -163,7 +165,7 @@ export class AsaasClient {
 
     return {
       ...checkout,
-      url: `${this.checkoutBaseUrl}${checkout.id}`,
+      url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
       expiresAt: addMinutes(now, payload.minutesToExpire),
     };
   }
@@ -212,4 +214,24 @@ function normalizeAsaasPhone(value: string | undefined) {
   }
 
   return null;
+}
+
+function resolveCheckoutUrl(
+  checkout: AsaasCheckoutResponse,
+  fallbackBaseUrl: string
+) {
+  const link = checkout.link?.trim();
+  if (link) {
+    return link;
+  }
+
+  if (fallbackBaseUrl.includes("{id}")) {
+    return fallbackBaseUrl.replace("{id}", checkout.id);
+  }
+
+  if (fallbackBaseUrl.includes("?id=")) {
+    return `${fallbackBaseUrl}${checkout.id}`;
+  }
+
+  return `${fallbackBaseUrl.replace(/\/+$/, "")}/${checkout.id}`;
 }
