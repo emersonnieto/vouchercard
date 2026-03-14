@@ -5,20 +5,13 @@ type AsaasCustomerPayload = {
   name: string;
   email: string;
   phone?: string;
-  mobilePhone?: string;
   cpfCnpj?: string;
   postalCode?: string;
   address?: string;
   addressNumber?: string;
   complement?: string;
   province?: string;
-  externalReference?: string;
-};
-
-type AsaasCustomerResponse = {
-  id: string;
-  name: string;
-  email: string;
+  city?: number;
 };
 
 type AsaasCheckoutPayload = {
@@ -42,6 +35,7 @@ type AsaasCheckoutPayload = {
     email: string;
     cpfCnpj: string;
     phone: string;
+    city: number;
     postalCode?: string;
     address?: string;
     addressNumber?: string;
@@ -102,8 +96,19 @@ export class AsaasClient {
   async createRecurringCheckout(input: {
     plan: SubscriptionPlanDefinition;
     sessionToken: string;
+    customerData: AsaasCustomerPayload;
   }) {
     const now = new Date();
+    const normalizedPhone = normalizeAsaasPhone(input.customerData.phone);
+
+    if (!normalizedPhone) {
+      throw new AsaasApiError("Telefone invalido para o checkout.", 400);
+    }
+
+    if (!input.customerData.city) {
+      throw new AsaasApiError("Codigo IBGE da cidade nao informado.", 400);
+    }
+
     const payload: AsaasCheckoutPayload = {
       billingTypes: ["CREDIT_CARD"],
       chargeTypes: ["RECURRENT"],
@@ -122,6 +127,18 @@ export class AsaasClient {
           value: input.plan.monthlyPrice,
         },
       ],
+      customerData: {
+        name: input.customerData.name,
+        email: input.customerData.email,
+        cpfCnpj: input.customerData.cpfCnpj || "",
+        phone: normalizedPhone,
+        city: input.customerData.city,
+        postalCode: input.customerData.postalCode,
+        address: input.customerData.address,
+        addressNumber: input.customerData.addressNumber,
+        complement: input.customerData.complement,
+        province: input.customerData.province,
+      },
       subscription: {
         cycle: input.plan.asaasCycle,
         nextDueDate: formatDateOnly(now),
@@ -174,4 +191,14 @@ function tryParseJson(value: string) {
   } catch {
     return null;
   }
+}
+
+function normalizeAsaasPhone(value: string | undefined) {
+  const digits = String(value ?? "").replace(/\D+/g, "");
+
+  if (digits.length === 10 || digits.length === 11) {
+    return digits;
+  }
+
+  return null;
 }

@@ -11,6 +11,7 @@ import {
   sanitizeDigits,
   slugifyAgencyName,
 } from "./billing.utils";
+import { resolveIbgeCityCode } from "./cityCodeLookup";
 import { getSubscriptionPlan, listSubscriptionPlans } from "./plans";
 
 export type SignupPayload = {
@@ -205,9 +206,32 @@ export async function createAgencySignup(payload: SignupPayload) {
   }
 
   try {
+    const cityCode = await resolveIbgeCityCode({
+      city: valid.city,
+      state: valid.state,
+    });
+
+    if (!cityCode) {
+      throw new BillingValidationError(
+        "Nao foi possivel identificar a cidade da agencia. Revise cidade e UF."
+      );
+    }
+
     const checkout = await getAsaasClient().createRecurringCheckout({
       plan,
       sessionToken: context.sessionToken,
+      customerData: {
+        name: valid.contactName,
+        email: valid.email,
+        phone: valid.phone,
+        cpfCnpj: valid.cpfCnpj,
+        postalCode: valid.postalCode,
+        address: valid.address,
+        addressNumber: valid.addressNumber,
+        complement: valid.complement,
+        province: valid.neighborhood,
+        city: cityCode,
+      },
     });
 
     await prisma.agencySubscription.update({
@@ -229,6 +253,10 @@ export async function createAgencySignup(payload: SignupPayload) {
       expiresAt: checkout.expiresAt,
     };
   } catch (error) {
+    if (error instanceof BillingValidationError) {
+      throw error;
+    }
+
     throw new BillingIntegrationError(
       error instanceof Error ? error.message : "Falha ao criar checkout no Asaas."
     );
