@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import * as adminService from "./admin.service";
-import { resolveVoucherAgencyId } from "./voucherScope";
+import { resolveOwnedAgencyId, resolveVoucherAgencyId } from "./voucherScope";
 
 type ServiceResult<T = unknown> =
   | { ok: true; status?: number; data: T }
@@ -63,8 +63,13 @@ export async function updateAgencyStatus(req: AuthedRequest, res: Response) {
 
 export async function updateAgencyBranding(req: AuthedRequest, res: Response) {
   try {
+    const scope = resolveOwnedAgencyId(req, req.params.agencyId);
+    if (!scope.ok) {
+      return res.status(scope.status).json({ message: scope.message });
+    }
+
     const result = await adminService.updateAgencyBranding({
-      agencyId: String(req.params.agencyId || "").trim(),
+      agencyId: scope.agencyId,
       logoUrl: (req.body ?? {}).logoUrl,
       primaryColor: (req.body ?? {}).primaryColor,
     });
@@ -78,8 +83,13 @@ export async function updateAgencyBranding(req: AuthedRequest, res: Response) {
 export async function uploadAgencyLogo(req: AuthedRequest, res: Response) {
   try {
     const body = req.body ?? {};
+    const scope = resolveOwnedAgencyId(req, req.params.agencyId);
+    if (!scope.ok) {
+      return res.status(scope.status).json({ message: scope.message });
+    }
+
     const result = await adminService.uploadAgencyLogo({
-      agencyId: String(req.params.agencyId || "").trim(),
+      agencyId: scope.agencyId,
       fileName: body.fileName,
       contentType: body.contentType,
       dataBase64: body.dataBase64,

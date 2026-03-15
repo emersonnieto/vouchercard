@@ -26,13 +26,13 @@ adminRouter.patch(
 
 adminRouter.patch(
   "/agencies/:agencyId/branding",
-  requireRole(["SUPERADMIN"]),
+  requireRole(["ADMIN", "SUPERADMIN"]),
   adminController.updateAgencyBranding
 );
 
 adminRouter.post(
   "/agencies/:agencyId/logo",
-  requireRole(["SUPERADMIN"]),
+  requireRole(["ADMIN", "SUPERADMIN"]),
   adminController.uploadAgencyLogo
 );
 

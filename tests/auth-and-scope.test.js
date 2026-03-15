@@ -12,7 +12,10 @@ const {
 } = require("../src/auth/userRoles");
 const { requireAuth } = require("../src/middlewares/requireAuth");
 const { requireRole } = require("../src/middlewares/requireRole");
-const { resolveVoucherAgencyId } = require("../src/modules/admin/voucherScope");
+const {
+  resolveOwnedAgencyId,
+  resolveVoucherAgencyId,
+} = require("../src/modules/admin/voucherScope");
 
 function createResponseRecorder() {
   return {
@@ -173,6 +176,61 @@ test("resolveVoucherAgencyId falls back to token agency for SUPERADMIN when no e
   });
 
   assert.equal(agencyId, "agency-from-token");
+});
+
+test("resolveOwnedAgencyId allows ADMIN to manage the agency from the token", () => {
+  const result = resolveOwnedAgencyId(
+    {
+      user: {
+        userId: "admin-2",
+        agencyId: "agency-own",
+        role: "ADMIN",
+      },
+    },
+    "agency-own"
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    agencyId: "agency-own",
+  });
+});
+
+test("resolveOwnedAgencyId blocks ADMIN from managing another agency", () => {
+  const result = resolveOwnedAgencyId(
+    {
+      user: {
+        userId: "admin-3",
+        agencyId: "agency-own",
+        role: "ADMIN",
+      },
+    },
+    "agency-other"
+  );
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 403,
+    message: "Sem permissao para alterar outra agencia.",
+  });
+});
+
+test("resolveOwnedAgencyId allows SUPERADMIN to manage the requested agency", () => {
+  const result = resolveOwnedAgencyId(
+    {
+      user: {
+        userId: "super-3",
+        agencyId: null,
+        role: "SUPERADMIN",
+      },
+    },
+    "agency-explicit"
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    agencyId: "agency-explicit",
+  });
 });
 
 test("resolveLoginUserRole keeps SUPERADMIN only for allowlisted emails", () => {
