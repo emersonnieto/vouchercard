@@ -8,6 +8,7 @@ import { billingRouter } from "./routes/billing";
 import { publicRouter } from "./routes/public";
 import { handleAsaasWebhook } from "./routes/webhooks";
 import { requireAuth } from "./middlewares/requireAuth";
+import { deactivateExpiredSubscriptions } from "./modules/billing/subscriptionAccess";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -239,6 +240,10 @@ const signupRateLimitWindowMs = readPositiveIntEnv(
   60 * 60 * 1000
 );
 const signupRateLimitMax = readPositiveIntEnv("SIGNUP_RATE_LIMIT_MAX", 10);
+const subscriptionExpirationSweepMs = readPositiveIntEnv(
+  "SUBSCRIPTION_EXPIRATION_SWEEP_MS",
+  15 * 60 * 1000
+);
 
 const loginRateLimit = createRateLimiter({
   keyPrefix: "login",
@@ -373,6 +378,31 @@ app.use((req: Request, res: Response) => {
 });
 
 const PORT = Number(process.env.PORT) || 3333;
+
+function startSubscriptionExpirationSweep() {
+  const runSweep = async () => {
+    try {
+      const result = await deactivateExpiredSubscriptions();
+      if (result.expiredSubscriptions > 0) {
+        console.info(
+          `[BILLING] ${result.expiredSubscriptions} assinatura(s) expiradas e desativadas automaticamente.`
+        );
+      }
+    } catch (error) {
+      console.error("[BILLING] falha ao expirar assinaturas automaticamente:", error);
+    }
+  };
+
+  void runSweep();
+
+  const timer = setInterval(() => {
+    void runSweep();
+  }, subscriptionExpirationSweepMs);
+
+  timer.unref?.();
+}
+
+startSubscriptionExpirationSweep();
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);

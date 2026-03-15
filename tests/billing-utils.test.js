@@ -8,6 +8,10 @@ const {
   mapAsaasEventToStatus,
 } = require("../src/modules/billing/billing.utils");
 const { getSubscriptionPlan } = require("../src/modules/billing/plans");
+const {
+  getSubscriptionExpiresAt,
+  hasSubscriptionReachedEnd,
+} = require("../src/modules/billing/subscriptionAccess");
 
 test("sanitizeDigits removes non numeric characters", () => {
   assert.equal(sanitizeDigits("12.345-67/890"), "1234567890");
@@ -36,4 +40,36 @@ test("mapAsaasEventToStatus activates only successful payment events", () => {
   assert.equal(mapAsaasEventToStatus("PAYMENT_CONFIRMED").activateAgency, true);
   assert.equal(mapAsaasEventToStatus("PAYMENT_OVERDUE").activateAgency, false);
   assert.equal(mapAsaasEventToStatus("UNKNOWN_EVENT"), null);
+});
+
+test("getSubscriptionExpiresAt uses the commitment months for every plan", () => {
+  const activatedAt = new Date("2026-01-10T12:00:00.000Z");
+  const monthlyExpiration = getSubscriptionExpiresAt(activatedAt, 1);
+  const semiannualExpiration = getSubscriptionExpiresAt(activatedAt, 6);
+  const annualExpiration = getSubscriptionExpiresAt(activatedAt, 12);
+
+  assert.equal(monthlyExpiration.toISOString(), "2026-02-10T12:00:00.000Z");
+  assert.equal(semiannualExpiration.toISOString(), "2026-07-10T12:00:00.000Z");
+  assert.equal(annualExpiration.toISOString(), "2027-01-10T12:00:00.000Z");
+});
+
+test("hasSubscriptionReachedEnd blocks access once the commitment window ends", () => {
+  const activatedAt = new Date("2026-01-10T12:00:00.000Z");
+
+  assert.equal(
+    hasSubscriptionReachedEnd(
+      activatedAt,
+      1,
+      new Date("2026-02-10T11:59:59.000Z")
+    ),
+    false
+  );
+  assert.equal(
+    hasSubscriptionReachedEnd(
+      activatedAt,
+      1,
+      new Date("2026-02-10T12:00:00.000Z")
+    ),
+    true
+  );
 });

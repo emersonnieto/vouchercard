@@ -1,26 +1,22 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyJwt, AppJwtPayload, UserRole } from "../auth/jwt";
+import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
 
-/**
- * 👤 Usuário autenticado disponível na request
- */
 export type AuthUser = {
   userId: string;
   agencyId?: string | null;
-  role: UserRole; // ✅ agora aceita SUPERADMIN também
+  role: UserRole;
 };
 
-/**
- * 🔐 Extendendo Request do Express
- */
 export interface AuthedRequest extends Request {
   user?: AuthUser;
 }
 
-/**
- * 🔒 Middleware de autenticação JWT
- */
-export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
+export async function requireAuth(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction
+) {
   const authHeader = req.header("authorization");
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -38,8 +34,24 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
       role: payload.role,
     };
 
+    if (payload.role !== "SUPERADMIN") {
+      const agencyAccess = await ensureAgencySubscriptionAccess(payload.agencyId);
+
+      if (!agencyAccess.agencyFound) {
+        return res.status(403).json({ message: "Usuario sem agencia vinculada." });
+      }
+
+      if (!agencyAccess.isActive) {
+        return res.status(403).json({
+          message: agencyAccess.expiredBySchedule
+            ? "Assinatura expirada. Contate o suporte."
+            : "Agencia inativa. Contate o suporte.",
+        });
+      }
+    }
+
     return next();
   } catch (error) {
-    return res.status(401).json({ message: "Token inválido ou expirado" });
+    return res.status(401).json({ message: "Token invalido ou expirado" });
   }
 }

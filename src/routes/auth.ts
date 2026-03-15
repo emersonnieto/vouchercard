@@ -7,6 +7,7 @@ import {
   resolveLoginUserRole,
 } from "../auth/userRoles";
 import { requireAuth, AuthedRequest } from "../middlewares/requireAuth";
+import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
 
 export const authRouter = Router();
 
@@ -23,11 +24,11 @@ authRouter.post("/login", async (req, res) => {
     const { email, password } = req.body ?? {};
 
     if (!email || typeof email !== "string") {
-      return res.status(400).json({ message: "email é obrigatório" });
+      return res.status(400).json({ message: "email e obrigatorio" });
     }
 
     if (!password || typeof password !== "string") {
-      return res.status(400).json({ message: "password é obrigatório" });
+      return res.status(400).json({ message: "password e obrigatorio" });
     }
 
     const user = await prisma.user.findUnique({
@@ -44,15 +45,14 @@ authRouter.post("/login", async (req, res) => {
     });
 
     if (!user) {
-      return res.status(401).json({ message: "Credenciais inválidas" });
+      return res.status(401).json({ message: "Credenciais invalidas" });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      return res.status(401).json({ message: "Credenciais inválidas" });
+      return res.status(401).json({ message: "Credenciais invalidas" });
     }
 
-    // ✅ bloqueio: se agência estiver inativa, não deixa logar (exceto SUPERADMIN)
     const role = resolveLoginUserRole({
       dbRole: user.role,
       email: user.email,
@@ -63,18 +63,17 @@ authRouter.post("/login", async (req, res) => {
       const agencyId = user.agencyId ? String(user.agencyId) : "";
       if (!agencyId) {
         return res.status(403).json({
-          message: "Usuário sem agência vinculada. Contate o suporte.",
+          message: "Usuario sem agencia vinculada. Contate o suporte.",
         });
       }
 
-      const agency = await prisma.agency.findUnique({
-        where: { id: agencyId },
-        select: { isActive: true },
-      });
+      const agencyAccess = await ensureAgencySubscriptionAccess(agencyId);
 
-      if (!agency?.isActive) {
+      if (!agencyAccess.agencyFound || !agencyAccess.isActive) {
         return res.status(403).json({
-          message: "Agência inativa. Contate o suporte.",
+          message: agencyAccess.expiredBySchedule
+            ? "Assinatura expirada. Contate o suporte."
+            : "Agencia inativa. Contate o suporte.",
         });
       }
     }
@@ -114,7 +113,7 @@ authRouter.post(
     try {
       const userId = req.user?.userId;
       if (!userId) {
-        return res.status(401).json({ message: "Não autorizado" });
+        return res.status(401).json({ message: "Nao autorizado" });
       }
 
       const { currentPassword, newPassword } = req.body ?? {};
@@ -122,7 +121,7 @@ authRouter.post(
       if (!currentPassword || typeof currentPassword !== "string") {
         return res
           .status(400)
-          .json({ message: "currentPassword é obrigatório" });
+          .json({ message: "currentPassword e obrigatorio" });
       }
 
       if (
@@ -132,7 +131,7 @@ authRouter.post(
       ) {
         return res
           .status(400)
-          .json({ message: "newPassword é obrigatório (mín 6)" });
+          .json({ message: "newPassword e obrigatorio (min 6)" });
       }
 
       const user = await prisma.user.findUnique({
@@ -141,7 +140,7 @@ authRouter.post(
       });
 
       if (!user) {
-        return res.status(404).json({ message: "Usuário não encontrado" });
+        return res.status(404).json({ message: "Usuario nao encontrado" });
       }
 
       const ok = await bcrypt.compare(currentPassword, user.passwordHash);

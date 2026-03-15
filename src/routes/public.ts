@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
 
 export const publicRouter = Router();
 
@@ -36,14 +37,16 @@ publicRouter.get("/vouchers/:publicCode", async (req: Request, res: Response) =>
     const voucher: PublicVoucher | null = await prisma.voucher.findFirst({
       where: {
         publicCode,
-        agency: {
-          isActive: true,
-        },
       },
       include: voucherPublicInclude,
     });
 
     if (!voucher) {
+      return res.status(404).json({ message: "Voucher nao encontrado" });
+    }
+
+    const agencyAccess = await ensureAgencySubscriptionAccess(voucher.agency.id);
+    if (!agencyAccess.isActive) {
       return res.status(404).json({ message: "Voucher nao encontrado" });
     }
 
