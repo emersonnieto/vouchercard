@@ -13,6 +13,7 @@ import {
 } from "./billing.utils";
 import { resolveIbgeCityCode } from "./cityCodeLookup";
 import { getSubscriptionPlan, listSubscriptionPlans } from "./plans";
+import { lookupBrazilianPostalCode } from "./postalCodeLookup";
 
 export type SignupPayload = {
   planCode?: string;
@@ -58,6 +59,7 @@ export function getPublicPlans() {
 
 export async function createAgencySignup(payload: SignupPayload) {
   const valid = validateSignupPayload(payload);
+  const normalizedAddress = await normalizeSignupAddress(valid);
   const passwordHash = await bcrypt.hash(valid.password, 10);
 
   const context = await prisma.$transaction(async (tx) => {
@@ -100,13 +102,13 @@ export async function createAgencySignup(payload: SignupPayload) {
           email: valid.email,
           contactName: valid.contactName,
           document: valid.cpfCnpj,
-          postalCode: valid.postalCode,
-          street: valid.address,
+          postalCode: normalizedAddress.postalCode,
+          street: normalizedAddress.address,
           addressNumber: valid.addressNumber,
           complement: valid.complement,
-          neighborhood: valid.neighborhood,
-          city: valid.city,
-          state: valid.state,
+          neighborhood: normalizedAddress.neighborhood,
+          city: normalizedAddress.city,
+          state: normalizedAddress.state,
           website: valid.website,
           isActive: false,
         },
@@ -130,13 +132,13 @@ export async function createAgencySignup(payload: SignupPayload) {
           email: valid.email,
           contactName: valid.contactName,
           document: valid.cpfCnpj,
-          postalCode: valid.postalCode,
-          street: valid.address,
+          postalCode: normalizedAddress.postalCode,
+          street: normalizedAddress.address,
           addressNumber: valid.addressNumber,
           complement: valid.complement,
-          neighborhood: valid.neighborhood,
-          city: valid.city,
-          state: valid.state,
+          neighborhood: normalizedAddress.neighborhood,
+          city: normalizedAddress.city,
+          state: normalizedAddress.state,
           website: valid.website,
           isActive: false,
         },
@@ -207,8 +209,8 @@ export async function createAgencySignup(payload: SignupPayload) {
 
   try {
     const cityCode = await resolveIbgeCityCode({
-      city: valid.city,
-      state: valid.state,
+      city: normalizedAddress.city,
+      state: normalizedAddress.state,
     });
 
     if (!cityCode) {
@@ -225,11 +227,11 @@ export async function createAgencySignup(payload: SignupPayload) {
         email: valid.email,
         phone: valid.phone,
         cpfCnpj: valid.cpfCnpj,
-        postalCode: valid.postalCode,
-        address: valid.address,
+        postalCode: normalizedAddress.postalCode,
+        address: normalizedAddress.address,
         addressNumber: valid.addressNumber,
         complement: valid.complement,
-        province: valid.neighborhood,
+        province: normalizedAddress.neighborhood,
         city: cityCode,
       },
     });
@@ -255,6 +257,15 @@ export async function createAgencySignup(payload: SignupPayload) {
   } catch (error) {
     if (error instanceof BillingValidationError) {
       throw error;
+    }
+
+    if (
+      error instanceof Error &&
+      normalizeErrorText(error.message).includes("campo postalcode e invalido")
+    ) {
+      throw new BillingValidationError(
+        "Nao foi possivel validar o CEP informado. Revise o CEP, a cidade e a UF."
+      );
     }
 
     throw new BillingIntegrationError(
@@ -575,6 +586,40 @@ function validateSignupPayload(payload: SignupPayload) {
     state,
     website,
   };
+}
+
+async function normalizeSignupAddress(valid: ReturnType<typeof validateSignupPayload>) {
+  const postalLookup = await lookupBrazilianPostalCode(valid.postalCode);
+
+  if (postalLookup.status === "not_found") {
+    throw new BillingValidationError("Informe um CEP valido.");
+  }
+
+  if (postalLookup.status !== "ok") {
+    return {
+      postalCode: valid.postalCode,
+      address: valid.address,
+      neighborhood: valid.neighborhood,
+      city: valid.city,
+      state: valid.state,
+    };
+  }
+
+  return {
+    postalCode: postalLookup.data.postalCode || valid.postalCode,
+    address: valid.address || postalLookup.data.street || "",
+    neighborhood: postalLookup.data.neighborhood || valid.neighborhood,
+    city: postalLookup.data.city || valid.city,
+    state: (postalLookup.data.state || valid.state).toUpperCase(),
+  };
+}
+
+function normalizeErrorText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 async function findSubscriptionForEvent(filters: {
