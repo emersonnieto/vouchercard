@@ -39,7 +39,7 @@ const plans: SubscriptionPlanDefinition[] = [
     name: "Anual",
     headline: "Melhor custo mensal",
     description:
-      "Condicao comercial mais agressiva para operacao recorrente e expansao do SaaS.",
+      "Ideal para donos de agencia que querem vender com mais autoridade e escalar com o melhor custo mensal.",
     monthlyPrice: 179.9,
     commitmentMonths: 12,
     billingCycleMonths: 1,
