@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      JWT_SECRET: ci-secret
+      ASAAS_API_URL: https://api-sandbox.asaas.com/v3
+      ASAAS_API_KEY: ci-token
+      ASAAS_CHECKOUT_BASE_URL: https://sandbox.asaas.com/checkoutSession/show/
+      FRONTEND_APP_URL: https://example.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run ci

@@ -74,8 +74,8 @@ export class AsaasApiError extends Error {
   }
 }
 
-function getRequiredEnv(name: string, fallback?: string) {
-  const value = process.env[name]?.trim() || fallback;
+function getRequiredEnv(name: string) {
+  const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`${name} nao configurada`);
   }
@@ -83,22 +83,13 @@ function getRequiredEnv(name: string, fallback?: string) {
 }
 
 export class AsaasClient {
-  private readonly baseUrl = getRequiredEnv(
-    "ASAAS_API_URL",
-    "https://api-sandbox.asaas.com/v3"
-  );
+  private readonly baseUrl = getRequiredEnv("ASAAS_API_URL");
 
   private readonly apiKey = getRequiredEnv("ASAAS_API_KEY");
 
-  private readonly checkoutBaseUrl = getRequiredEnv(
-    "ASAAS_CHECKOUT_BASE_URL",
-    "https://sandbox.asaas.com/checkoutSession/show/"
-  );
+  private readonly checkoutBaseUrl = getRequiredEnv("ASAAS_CHECKOUT_BASE_URL");
 
-  private readonly frontendAppUrl = getRequiredEnv(
-    "FRONTEND_APP_URL",
-    "http://localhost:5173"
-  );
+  private readonly frontendAppUrl = getRequiredEnv("FRONTEND_APP_URL");
 
   async createRecurringCheckout(input: {
     plan: SubscriptionPlanDefinition;
