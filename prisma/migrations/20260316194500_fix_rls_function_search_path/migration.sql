@@ -4,9 +4,9 @@ language sql
 stable
 set search_path = ''
 as $$
-  select pg_catalog.lower(
-    pg_catalog.coalesce(
-      pg_catalog.nullif(pg_catalog.current_setting('app.access_mode', true), ''),
+  select lower(
+    coalesce(
+      nullif(current_setting('app.access_mode', true), ''),
       ''
     )
   );
@@ -18,8 +18,8 @@ language sql
 stable
 set search_path = ''
 as $$
-  select pg_catalog.coalesce(
-    pg_catalog.nullif(pg_catalog.current_setting('app.user_id', true), ''),
+  select coalesce(
+    nullif(current_setting('app.user_id', true), ''),
     ''
   );
 $$;
@@ -30,8 +30,8 @@ language sql
 stable
 set search_path = ''
 as $$
-  select pg_catalog.coalesce(
-    pg_catalog.nullif(pg_catalog.current_setting('app.agency_id', true), ''),
+  select coalesce(
+    nullif(current_setting('app.agency_id', true), ''),
     ''
   );
 $$;
@@ -42,9 +42,9 @@ language sql
 stable
 set search_path = ''
 as $$
-  select pg_catalog.upper(
-    pg_catalog.coalesce(
-      pg_catalog.nullif(pg_catalog.current_setting('app.role', true), ''),
+  select upper(
+    coalesce(
+      nullif(current_setting('app.role', true), ''),
       ''
     )
   );
@@ -56,7 +56,7 @@ language sql
 stable
 set search_path = ''
 as $$
-  select pg_catalog.current_user in (
+  select current_user in (
     'postgres',
     'supabase_admin',
     'supabase_auth_admin',
