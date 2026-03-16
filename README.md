@@ -120,7 +120,7 @@ npm run dev
 - Não versionar `.env`
 
 - Em producao, configure `CORS_ALLOWED_ORIGINS` para ativar whitelist; sem ela, a API sobe com warning e libera todas as origens
-- Whitelist padrao inclui `https://admin.vouchercard.com.br` e `https://vouchercard-admin.vercel.app`; mantenha `CORS_ALLOWED_ORIGINS` atualizado quando adicionar novos frontends
+- Whitelist padrao inclui `https://vouchercard.com.br`, `https://www.vouchercard.com.br` e `https://admin.vouchercard.com.br`; mantenha `CORS_ALLOWED_ORIGINS` atualizado quando adicionar novos frontends
 - `TRUST_PROXY=true` e recomendado quando a API fica atras de proxy/load balancer
 - Os rate limits usam Postgres como contagem compartilhada e fazem fallback local apenas em falha do store
 - `SUPERADMIN` so e reconhecido no login quando o email estiver em `SUPERADMIN_EMAILS`; criar usuario por agencia gera apenas `ADMIN`

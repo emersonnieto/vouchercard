@@ -209,8 +209,6 @@ const defaultAllowedOrigins = [
   "https://vouchercard.com.br",
   "https://www.vouchercard.com.br",
   "https://admin.vouchercard.com.br",
-  "https://vouchercard-admin.vercel.app",
-  "http://localhost:5173",
 ];
 
 const allowedOrigins = Array.from(
