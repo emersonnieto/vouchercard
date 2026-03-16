@@ -1,3 +1,7 @@
+import { fetchWithTimeout } from "../../lib/fetchWithTimeout";
+
+const POSTAL_LOOKUP_TIMEOUT_MS = 4_000;
+
 type PostalCodeLookupData = {
   postalCode: string;
   street: string | null;
@@ -30,7 +34,11 @@ export async function lookupBrazilianPostalCode(
   let hadExternalFailure = false;
 
   try {
-    const viaCepResponse = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    const viaCepResponse = await fetchWithTimeout(
+      `https://viacep.com.br/ws/${cep}/json/`,
+      {},
+      { serviceName: "ViaCEP", timeoutMs: POSTAL_LOOKUP_TIMEOUT_MS }
+    );
     if (viaCepResponse.ok) {
       const viaCepData = (await viaCepResponse.json()) as {
         erro?: boolean;
@@ -67,7 +75,11 @@ export async function lookupBrazilianPostalCode(
   }
 
   try {
-    const brasilApiResponse = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+    const brasilApiResponse = await fetchWithTimeout(
+      `https://brasilapi.com.br/api/cep/v2/${cep}`,
+      {},
+      { serviceName: "BrasilAPI", timeoutMs: POSTAL_LOOKUP_TIMEOUT_MS }
+    );
     if (brasilApiResponse.ok) {
       const brasilApiData = (await brasilApiResponse.json()) as {
         cep?: string;

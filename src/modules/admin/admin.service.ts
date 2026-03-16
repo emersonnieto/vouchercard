@@ -4,6 +4,10 @@ import { prisma } from "../../lib/prisma";
 import { RlsDbClient } from "../../lib/rls";
 import { resolveAgencyUserRole } from "../../auth/userRoles";
 import { lookupPostalCode as lookupPostalCodeService } from "./postalLookup";
+import {
+  ExternalRequestTimeoutError,
+  fetchWithTimeout,
+} from "../../lib/fetchWithTimeout";
 
 type CreateAgencyInput = {
   name?: unknown;
@@ -81,6 +85,7 @@ const ALLOWED_LOGO_TYPES = new Set([
 const PUBLIC_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PUBLIC_CODE_LENGTH = 8;
 const MAX_PUBLIC_CODE_ATTEMPTS = 12;
+const SUPABASE_TIMEOUT_MS = 15_000;
 
 type AdminDbClient = RlsDbClient | typeof prisma;
 
@@ -630,19 +635,34 @@ export async function uploadAgencyLogo(
   const { supabaseUrl, serviceRoleKey } = storageEnv;
   const path = `${agencyId}/logo.${ext}`;
 
-  const uploadResponse = await fetch(
-    `${supabaseUrl}/storage/v1/object/agency-logos/${path}`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-        "Content-Type": contentType,
-        "x-upsert": "true",
+  let uploadResponse: Response;
+
+  try {
+    uploadResponse = await fetchWithTimeout(
+      `${supabaseUrl}/storage/v1/object/agency-logos/${path}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${serviceRoleKey}`,
+          apikey: serviceRoleKey,
+          "Content-Type": contentType,
+          "x-upsert": "true",
+        },
+        body: new Uint8Array(fileBuffer),
       },
-      body: new Uint8Array(fileBuffer),
+      { serviceName: "Supabase Storage", timeoutMs: SUPABASE_TIMEOUT_MS }
+    );
+  } catch (error) {
+    if (error instanceof ExternalRequestTimeoutError) {
+      return {
+        ok: false as const,
+        status: 504,
+        message: "Tempo limite ao enviar logo para o storage.",
+      };
     }
-  );
+
+    throw error;
+  }
 
   if (!uploadResponse.ok) {
     const details = await uploadResponse.text().catch(() => "");

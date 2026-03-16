@@ -4,6 +4,12 @@ import {
   addMonths,
   formatAsaasDateTime,
 } from "./billing.utils";
+import {
+  ExternalRequestTimeoutError,
+  fetchWithTimeout,
+} from "../../lib/fetchWithTimeout";
+
+const ASAAS_TIMEOUT_MS = 15_000;
 
 type AsaasCustomerPayload = {
   name: string;
@@ -162,15 +168,29 @@ export class AsaasClient {
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        access_token: this.apiKey,
-        ...(init.headers ?? {}),
-      },
-    });
+    let response: Response;
+
+    try {
+      response = await fetchWithTimeout(
+        `${this.baseUrl}${path}`,
+        {
+          ...init,
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            access_token: this.apiKey,
+            ...(init.headers ?? {}),
+          },
+        },
+        { serviceName: "Asaas", timeoutMs: ASAAS_TIMEOUT_MS }
+      );
+    } catch (error) {
+      if (error instanceof ExternalRequestTimeoutError) {
+        throw new AsaasApiError(error.message, 504);
+      }
+
+      throw error;
+    }
 
     const raw = await response.text();
     const parsed = raw ? tryParseJson(raw) : null;

@@ -1,4 +1,7 @@
+import { fetchWithTimeout } from "../../lib/fetchWithTimeout";
+
 const ibgeStateMunicipalitiesCache = new Map<string, Promise<IbgeCityRecord[]>>();
+const IBGE_TIMEOUT_MS = 5_000;
 
 type ResolveCityCodeInput = {
   city: string;
@@ -49,13 +52,21 @@ async function listIbgeCitiesByState(state: string) {
   if (!ibgeStateMunicipalitiesCache.has(state)) {
     ibgeStateMunicipalitiesCache.set(
       state,
-      fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${encodeURIComponent(state)}/municipios`)
+      fetchWithTimeout(
+        `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${encodeURIComponent(state)}/municipios`,
+        {},
+        { serviceName: "IBGE", timeoutMs: IBGE_TIMEOUT_MS }
+      )
         .then(async (response) => {
           if (!response.ok) {
             throw new Error(`Falha ao consultar municipios do IBGE para ${state}.`);
           }
 
           return (await response.json()) as IbgeCityRecord[];
+        })
+        .catch((error) => {
+          ibgeStateMunicipalitiesCache.delete(state);
+          throw error;
         })
     );
   }

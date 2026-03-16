@@ -1,3 +1,10 @@
+import {
+  ExternalRequestTimeoutError,
+  fetchWithTimeout,
+} from "../../lib/fetchWithTimeout";
+
+const POSTAL_LOOKUP_TIMEOUT_MS = 4_000;
+
 type LookupPostalCodeInput = {
   countryCode?: unknown;
   postalCode?: unknown;
@@ -18,7 +25,11 @@ export async function lookupPostalCode(input: LookupPostalCodeInput) {
     }
 
     try {
-      const viaCepResponse = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const viaCepResponse = await fetchWithTimeout(
+        `https://viacep.com.br/ws/${cep}/json/`,
+        {},
+        { serviceName: "ViaCEP", timeoutMs: POSTAL_LOOKUP_TIMEOUT_MS }
+      );
       if (viaCepResponse.ok) {
         const viaCepData = (await viaCepResponse.json()) as {
           erro?: boolean;
@@ -49,7 +60,11 @@ export async function lookupPostalCode(input: LookupPostalCodeInput) {
     }
 
     try {
-      const brasilApiResponse = await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
+      const brasilApiResponse = await fetchWithTimeout(
+        `https://brasilapi.com.br/api/cep/v2/${cep}`,
+        {},
+        { serviceName: "BrasilAPI", timeoutMs: POSTAL_LOOKUP_TIMEOUT_MS }
+      );
       if (brasilApiResponse.ok) {
         const brasilApiData = (await brasilApiResponse.json()) as {
           cep?: string;
@@ -76,7 +91,15 @@ export async function lookupPostalCode(input: LookupPostalCodeInput) {
       if (brasilApiResponse.status === 404) {
         return { ok: false as const, status: 404, message: "CEP nao encontrado." };
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof ExternalRequestTimeoutError) {
+        return {
+          ok: false as const,
+          status: 504,
+          message: "Tempo limite ao consultar CEP externo.",
+        };
+      }
+
       return { ok: false as const, status: 502, message: "Falha ao consultar CEP externo." };
     }
 
@@ -85,10 +108,20 @@ export async function lookupPostalCode(input: LookupPostalCodeInput) {
 
   let response: Response;
   try {
-    response = await fetch(
-      `https://api.zippopotam.us/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCodeRaw)}`
+    response = await fetchWithTimeout(
+      `https://api.zippopotam.us/${encodeURIComponent(countryCode)}/${encodeURIComponent(postalCodeRaw)}`,
+      {},
+      { serviceName: "Zippopotam", timeoutMs: POSTAL_LOOKUP_TIMEOUT_MS }
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof ExternalRequestTimeoutError) {
+      return {
+        ok: false as const,
+        status: 504,
+        message: "Tempo limite ao consultar codigo postal externo.",
+      };
+    }
+
     return { ok: false as const, status: 502, message: "Falha ao consultar codigo postal externo." };
   }
 
