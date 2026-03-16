@@ -10,13 +10,16 @@ from pg_roles
 where rolname = 'app_runtime';
 
 select
-  schemaname,
-  tablename,
-  rowsecurity,
-  forcerowsecurity
-from pg_tables
-where schemaname = 'public'
-  and tablename in (
+  n.nspname as schemaname,
+  c.relname as tablename,
+  c.relrowsecurity as rowsecurity,
+  c.relforcerowsecurity as forcerowsecurity
+from pg_class c
+join pg_namespace n
+  on n.oid = c.relnamespace
+where n.nspname = 'public'
+  and c.relkind = 'r'
+  and c.relname in (
     'Agency',
     'User',
     'Voucher',
