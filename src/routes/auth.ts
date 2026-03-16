@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma";
+import { runWithRlsContext } from "../lib/rls";
 import { signJwt } from "../auth/jwt";
 import {
   readSuperadminEmailAllowlist,
@@ -111,8 +112,9 @@ authRouter.post(
   requireAuth,
   async (req: AuthedRequest, res) => {
     try {
-      const userId = req.user?.userId;
-      if (!userId) {
+      const authUser = req.user;
+      const userId = authUser?.userId;
+      if (!authUser || !userId) {
         return res.status(401).json({ message: "Nao autorizado" });
       }
 
@@ -134,10 +136,13 @@ authRouter.post(
           .json({ message: "newPassword e obrigatorio (min 6)" });
       }
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, passwordHash: true },
-      });
+      const user: { id: string; passwordHash: string } | null =
+        await runWithRlsContext(authUser, (db) =>
+          db.user.findUnique({
+          where: { id: userId },
+          select: { id: true, passwordHash: true },
+          })
+        );
 
       if (!user) {
         return res.status(404).json({ message: "Usuario nao encontrado" });
@@ -150,10 +155,12 @@ authRouter.post(
 
       const passwordHash = await bcrypt.hash(newPassword, 10);
 
-      await prisma.user.update({
-        where: { id: userId },
-        data: { passwordHash },
-      });
+      await runWithRlsContext(authUser, (db) =>
+        db.user.update({
+          where: { id: userId },
+          data: { passwordHash },
+        })
+      );
 
       return res.json({ message: "Senha atualizada com sucesso" });
     } catch (e) {

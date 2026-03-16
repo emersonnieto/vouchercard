@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
-import { prisma } from "./lib/prisma";
+import { isDedicatedAppDatabaseUrlConfigured, prisma } from "./lib/prisma";
 import { adminRouter } from "./routes/admin";
 import { authRouter } from "./routes/auth";
 import { billingRouter } from "./routes/billing";
@@ -326,6 +326,11 @@ if (isProduction) {
   console.warn(
     "[RATE_LIMIT] usando Postgres para contagem compartilhada entre instancias, com fallback local se o store falhar."
   );
+  if (!isDedicatedAppDatabaseUrlConfigured) {
+    console.warn(
+      "[RLS] DATABASE_URL_APP nao configurada; rotas autenticadas seguem usando DATABASE_URL e o isolamento no banco nao estara efetivo se esse usuario tiver BYPASSRLS."
+    );
+  }
 }
 
 /**

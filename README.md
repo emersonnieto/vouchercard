@@ -46,6 +46,7 @@ npm install
 NODE_ENV=development
 PORT=3333
 DATABASE_URL=postgresql://user:pass@host:5432/db
+DATABASE_URL_APP=postgresql://app_runtime:pass@host:5432/db
 DATABASE_SSL=
 DATABASE_SSL_REJECT_UNAUTHORIZED=
 JWT_SECRET=seu_segredo_forte
@@ -124,6 +125,24 @@ npm run dev
 - Os rate limits usam Postgres como contagem compartilhada e fazem fallback local apenas em falha do store
 - `SUPERADMIN` so e reconhecido no login quando o email estiver em `SUPERADMIN_EMAILS`; criar usuario por agencia gera apenas `ADMIN`
 - `ASAAS_API_URL`, `ASAAS_CHECKOUT_BASE_URL` e `FRONTEND_APP_URL` devem ser configuradas explicitamente antes do deploy
+- `DATABASE_URL` fica reservado para migrações e fluxos de sistema (`signup`, `webhook`, rate limit, sweeper)
+- `DATABASE_URL_APP` deve usar uma role sem `BYPASSRLS` para as rotas autenticadas do painel
+
+## Rollout de RLS
+
+1. Crie a role de runtime usando [setup_app_runtime_role.sql](/c:/projetc_voucher/voucher-api/sql/setup_app_runtime_role.sql) e troque a senha antes de rodar.
+2. Configure `DATABASE_URL_APP` no ambiente da API apontando para essa role.
+3. Rode `npx prisma migrate deploy --config prisma.config.ts` para aplicar a migration [20260316193000_enable_tenant_rls](/c:/projetc_voucher/voucher-api/prisma/migrations/20260316193000_enable_tenant_rls/migration.sql).
+4. Reinicie a API e confirme que o warning de `DATABASE_URL_APP nao configurada` sumiu.
+5. Rode [verify_rls_runtime.sql](/c:/projetc_voucher/voucher-api/sql/verify_rls_runtime.sql) para confirmar a role e as policies.
+6. Teste estes fluxos: `POST /auth/login`, `POST /auth/change-password`, CRUD de vouchers no admin, `GET /public/vouchers/:publicCode`, `POST /public/billing/signup`, `GET /public/billing/sessions/:publicToken` e `POST /webhooks/asaas`.
+
+Checklist rapido depois do deploy:
+
+- Admin da agencia consegue ver e alterar apenas a propria agencia.
+- `SUPERADMIN` continua conseguindo listar agencias e operar multiagencia.
+- Voucher publico continua abrindo quando a agencia esta ativa.
+- Signup, webhook e sweep de expiracao continuam funcionando.
 
 ## Estado atual
 

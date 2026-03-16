@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../../lib/prisma";
+import { RlsDbClient } from "../../lib/rls";
 import { resolveAgencyUserRole } from "../../auth/userRoles";
 import { lookupPostalCode as lookupPostalCodeService } from "./postalLookup";
 
@@ -81,6 +82,8 @@ const PUBLIC_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PUBLIC_CODE_LENGTH = 8;
 const MAX_PUBLIC_CODE_ATTEMPTS = 12;
 
+type AdminDbClient = RlsDbClient | typeof prisma;
+
 function sortFlights<T extends { direction: string; segmentOrder?: number | null }>(flights: T[]) {
   return [...flights].sort(
     (a, b) =>
@@ -124,10 +127,10 @@ function generatePublicCodeCandidate() {
   return code;
 }
 
-async function generateUniquePublicCode() {
+async function generateUniquePublicCode(db: AdminDbClient) {
   for (let i = 0; i < MAX_PUBLIC_CODE_ATTEMPTS; i += 1) {
     const candidate = generatePublicCodeCandidate();
-    const existing = await prisma.voucher.findUnique({
+    const existing = await db.voucher.findUnique({
       where: { publicCode: candidate },
       select: { id: true },
     });
@@ -382,8 +385,8 @@ function getSupabaseStorageEnv() {
   return { supabaseUrl, serviceRoleKey };
 }
 
-export async function getMe(userId: string) {
-  const user = await prisma.user.findUnique({
+export async function getMe(userId: string, db: AdminDbClient = prisma) {
+  const user = await db.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
@@ -398,7 +401,7 @@ export async function getMe(userId: string) {
   if (!user) return null;
 
   const agency = user.agencyId
-    ? await prisma.agency.findUnique({
+    ? await db.agency.findUnique({
         where: { id: user.agencyId },
         select: {
           id: true,
@@ -417,8 +420,8 @@ export async function getMe(userId: string) {
   return { user, agency };
 }
 
-export async function listAgencies() {
-  return prisma.agency.findMany({
+export async function listAgencies(db: AdminDbClient = prisma) {
+  return db.agency.findMany({
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -434,7 +437,10 @@ export async function listAgencies() {
   });
 }
 
-export async function createAgency(input: CreateAgencyInput) {
+export async function createAgency(
+  input: CreateAgencyInput,
+  db: AdminDbClient = prisma
+) {
   const { name, slug, phone, email } = input;
 
   if (!name || typeof name !== "string") {
@@ -445,7 +451,7 @@ export async function createAgency(input: CreateAgencyInput) {
   }
 
   try {
-    const agency = await prisma.agency.create({
+    const agency = await db.agency.create({
       data: {
         name: name.trim(),
         slug: slug.trim().toLowerCase(),
@@ -474,7 +480,10 @@ export async function createAgency(input: CreateAgencyInput) {
   }
 }
 
-export async function updateAgencyStatus(input: UpdateAgencyStatusInput) {
+export async function updateAgencyStatus(
+  input: UpdateAgencyStatusInput,
+  db: AdminDbClient = prisma
+) {
   const { agencyId, isActive } = input;
 
   if (!agencyId) {
@@ -485,7 +494,7 @@ export async function updateAgencyStatus(input: UpdateAgencyStatusInput) {
   }
 
   try {
-    const updated = await prisma.agency.update({
+    const updated = await db.agency.update({
       where: { id: agencyId },
       data: { isActive },
       select: {
@@ -510,7 +519,10 @@ export async function updateAgencyStatus(input: UpdateAgencyStatusInput) {
   }
 }
 
-export async function updateAgencyBranding(input: UpdateAgencyBrandingInput) {
+export async function updateAgencyBranding(
+  input: UpdateAgencyBrandingInput,
+  db: AdminDbClient = prisma
+) {
   const { agencyId, logoUrl, primaryColor } = input;
 
   if (!agencyId) {
@@ -527,7 +539,7 @@ export async function updateAgencyBranding(input: UpdateAgencyBrandingInput) {
       : String(primaryColor);
 
   try {
-    const updated = await prisma.agency.update({
+    const updated = await db.agency.update({
       where: { id: agencyId },
       data: {
         logoUrl: logoUrlFinal,
@@ -555,7 +567,10 @@ export async function updateAgencyBranding(input: UpdateAgencyBrandingInput) {
   }
 }
 
-export async function uploadAgencyLogo(input: UploadAgencyLogoInput) {
+export async function uploadAgencyLogo(
+  input: UploadAgencyLogoInput,
+  db: AdminDbClient = prisma
+) {
   const { agencyId, fileName, contentType, dataBase64 } = input;
 
   if (!agencyId) {
@@ -574,7 +589,7 @@ export async function uploadAgencyLogo(input: UploadAgencyLogoInput) {
     return { ok: false as const, status: 400, message: "Arquivo inválido" };
   }
 
-  const agency = await prisma.agency.findUnique({
+  const agency = await db.agency.findUnique({
     where: { id: agencyId },
     select: { id: true },
   });
@@ -647,7 +662,10 @@ export async function uploadAgencyLogo(input: UploadAgencyLogoInput) {
   };
 }
 
-export async function createAgencyUser(input: CreateAgencyUserInput) {
+export async function createAgencyUser(
+  input: CreateAgencyUserInput,
+  db: AdminDbClient = prisma
+) {
   const { agencyId, name, email, password, role } = input;
 
   if (!agencyId) {
@@ -663,7 +681,7 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
     return { ok: false as const, status: 400, message: "password é obrigatório (mín 6)" };
   }
 
-  const agency = await prisma.agency.findUnique({
+  const agency = await db.agency.findUnique({
     where: { id: agencyId },
     select: { id: true },
   });
@@ -680,7 +698,7 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
   const finalRole = resolvedRole.role;
 
   try {
-    const user = await prisma.user.create({
+    const user = await db.user.create({
       data: {
         agencyId,
         name: name.trim(),
@@ -707,7 +725,10 @@ export async function createAgencyUser(input: CreateAgencyUserInput) {
   }
 }
 
-export async function createVoucher(input: CreateVoucherInput) {
+export async function createVoucher(
+  input: CreateVoucherInput,
+  db: AdminDbClient = prisma
+) {
   const { agencyId } = input;
 
   if (!agencyId) {
@@ -724,9 +745,9 @@ export async function createVoucher(input: CreateVoucherInput) {
   }
 
   try {
-    const publicCode = await generateUniquePublicCode();
+    const publicCode = await generateUniquePublicCode(db);
 
-    const created = await prisma.voucher.create({
+    const created = await db.voucher.create({
       data: {
         agencyId,
         publicCode,
@@ -820,7 +841,10 @@ export async function createVoucher(input: CreateVoucherInput) {
   }
 }
 
-export async function updateVoucher(input: UpdateVoucherInput) {
+export async function updateVoucher(
+  input: UpdateVoucherInput,
+  db: AdminDbClient = prisma
+) {
   const { agencyId, id } = input;
 
   if (!agencyId) {
@@ -834,7 +858,7 @@ export async function updateVoucher(input: UpdateVoucherInput) {
     return { ok: false as const, status: 400, message: "ID invÃ¡lido" };
   }
 
-  const existing = await prisma.voucher.findFirst({
+  const existing = await db.voucher.findFirst({
     where: { id, agencyId },
     select: { id: true },
   });
@@ -849,110 +873,108 @@ export async function updateVoucher(input: UpdateVoucherInput) {
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.voucher.update({
-        where: { id },
-        data: {
-          reservationCode: normalized.data.reservationCode,
-          webCheckinCode: normalized.data.webCheckinCode,
-          clientName: normalized.data.clientName,
-          insuranceProvider: normalized.data.insuranceProvider,
-          insurancePhone: normalized.data.insurancePhone,
-          insuranceEmail: normalized.data.insuranceEmail,
-          additionalNotes: normalized.data.additionalNotes,
-        },
-      });
-
-      await tx.flight.deleteMany({ where: { voucherId: id } });
-      await tx.tour.deleteMany({ where: { voucherId: id } });
-
-      await tx.flight.createMany({
-        data: normalized.data.flights.map((flight) => ({
-          voucherId: id,
-          direction: flight.direction as "OUTBOUND" | "RETURN",
-          segmentOrder: flight.segmentOrder,
-          flightDate: flight.flightDate,
-          flightNumber: flight.flightNumber,
-          departureTime: flight.departureTime,
-          arrivalTime: flight.arrivalTime,
-          embarkAirport: flight.embarkAirport,
-          disembarkAirport: flight.disembarkAirport,
-        })),
-      });
-
-      if (normalized.data.tours.length) {
-        await tx.tour.createMany({
-          data: normalized.data.tours.map((tour) => ({
-            voucherId: id,
-            sortOrder: tour.sortOrder,
-            tourDate: tour.tourDate,
-            departureTime: tour.departureTime,
-            location: tour.location,
-            receptiveName: tour.receptiveName,
-          })),
-        });
-      }
-
-      if (normalized.data.hotel) {
-        await tx.hotel.upsert({
-          where: { voucherId: id },
-          create: {
-            voucherId: id,
-            hotelName: normalized.data.hotel.hotelName,
-            email: normalized.data.hotel.email,
-            phones: normalized.data.hotel.phones,
-            postalCode: normalized.data.hotel.postalCode,
-            street: normalized.data.hotel.street,
-            hotelNumber: normalized.data.hotel.hotelNumber,
-            neighborhood: normalized.data.hotel.neighborhood,
-            city: normalized.data.hotel.city,
-            state: normalized.data.hotel.state,
-            country: normalized.data.hotel.country,
-            nights: normalized.data.hotel.nights,
-            checkInAt: normalized.data.hotel.checkInAt,
-            checkOutAt: normalized.data.hotel.checkOutAt,
-            mealPlan: normalized.data.hotel.mealPlan,
-            roomType: normalized.data.hotel.roomType,
-          },
-          update: {
-            hotelName: normalized.data.hotel.hotelName,
-            email: normalized.data.hotel.email,
-            phones: normalized.data.hotel.phones,
-            postalCode: normalized.data.hotel.postalCode,
-            street: normalized.data.hotel.street,
-            hotelNumber: normalized.data.hotel.hotelNumber,
-            neighborhood: normalized.data.hotel.neighborhood,
-            city: normalized.data.hotel.city,
-            state: normalized.data.hotel.state,
-            country: normalized.data.hotel.country,
-            nights: normalized.data.hotel.nights,
-            checkInAt: normalized.data.hotel.checkInAt,
-            checkOutAt: normalized.data.hotel.checkOutAt,
-            mealPlan: normalized.data.hotel.mealPlan,
-            roomType: normalized.data.hotel.roomType,
-          },
-        });
-      } else {
-        await tx.hotel.deleteMany({ where: { voucherId: id } });
-      }
-
-      if (normalized.data.transfer) {
-        await tx.transfer.upsert({
-          where: { voucherId: id },
-          create: {
-            voucherId: id,
-            receptiveName: normalized.data.transfer.receptiveName,
-          },
-          update: {
-            receptiveName: normalized.data.transfer.receptiveName,
-          },
-        });
-      } else {
-        await tx.transfer.deleteMany({ where: { voucherId: id } });
-      }
+    await db.voucher.update({
+      where: { id },
+      data: {
+        reservationCode: normalized.data.reservationCode,
+        webCheckinCode: normalized.data.webCheckinCode,
+        clientName: normalized.data.clientName,
+        insuranceProvider: normalized.data.insuranceProvider,
+        insurancePhone: normalized.data.insurancePhone,
+        insuranceEmail: normalized.data.insuranceEmail,
+        additionalNotes: normalized.data.additionalNotes,
+      },
     });
 
-    const updated = await prisma.voucher.findFirst({
+    await db.flight.deleteMany({ where: { voucherId: id } });
+    await db.tour.deleteMany({ where: { voucherId: id } });
+
+    await db.flight.createMany({
+      data: normalized.data.flights.map((flight) => ({
+        voucherId: id,
+        direction: flight.direction as "OUTBOUND" | "RETURN",
+        segmentOrder: flight.segmentOrder,
+        flightDate: flight.flightDate,
+        flightNumber: flight.flightNumber,
+        departureTime: flight.departureTime,
+        arrivalTime: flight.arrivalTime,
+        embarkAirport: flight.embarkAirport,
+        disembarkAirport: flight.disembarkAirport,
+      })),
+    });
+
+    if (normalized.data.tours.length) {
+      await db.tour.createMany({
+        data: normalized.data.tours.map((tour) => ({
+          voucherId: id,
+          sortOrder: tour.sortOrder,
+          tourDate: tour.tourDate,
+          departureTime: tour.departureTime,
+          location: tour.location,
+          receptiveName: tour.receptiveName,
+        })),
+      });
+    }
+
+    if (normalized.data.hotel) {
+      await db.hotel.upsert({
+        where: { voucherId: id },
+        create: {
+          voucherId: id,
+          hotelName: normalized.data.hotel.hotelName,
+          email: normalized.data.hotel.email,
+          phones: normalized.data.hotel.phones,
+          postalCode: normalized.data.hotel.postalCode,
+          street: normalized.data.hotel.street,
+          hotelNumber: normalized.data.hotel.hotelNumber,
+          neighborhood: normalized.data.hotel.neighborhood,
+          city: normalized.data.hotel.city,
+          state: normalized.data.hotel.state,
+          country: normalized.data.hotel.country,
+          nights: normalized.data.hotel.nights,
+          checkInAt: normalized.data.hotel.checkInAt,
+          checkOutAt: normalized.data.hotel.checkOutAt,
+          mealPlan: normalized.data.hotel.mealPlan,
+          roomType: normalized.data.hotel.roomType,
+        },
+        update: {
+          hotelName: normalized.data.hotel.hotelName,
+          email: normalized.data.hotel.email,
+          phones: normalized.data.hotel.phones,
+          postalCode: normalized.data.hotel.postalCode,
+          street: normalized.data.hotel.street,
+          hotelNumber: normalized.data.hotel.hotelNumber,
+          neighborhood: normalized.data.hotel.neighborhood,
+          city: normalized.data.hotel.city,
+          state: normalized.data.hotel.state,
+          country: normalized.data.hotel.country,
+          nights: normalized.data.hotel.nights,
+          checkInAt: normalized.data.hotel.checkInAt,
+          checkOutAt: normalized.data.hotel.checkOutAt,
+          mealPlan: normalized.data.hotel.mealPlan,
+          roomType: normalized.data.hotel.roomType,
+        },
+      });
+    } else {
+      await db.hotel.deleteMany({ where: { voucherId: id } });
+    }
+
+    if (normalized.data.transfer) {
+      await db.transfer.upsert({
+        where: { voucherId: id },
+        create: {
+          voucherId: id,
+          receptiveName: normalized.data.transfer.receptiveName,
+        },
+        update: {
+          receptiveName: normalized.data.transfer.receptiveName,
+        },
+      });
+    } else {
+      await db.transfer.deleteMany({ where: { voucherId: id } });
+    }
+
+    const updated = await db.voucher.findFirst({
       where: { id, agencyId },
       include: { flights: true, tours: true, hotel: true, transfer: true },
     });
@@ -977,7 +999,10 @@ export async function updateVoucher(input: UpdateVoucherInput) {
   }
 }
 
-export async function listVouchers(agencyId: string) {
+export async function listVouchers(
+  agencyId: string,
+  db: AdminDbClient = prisma
+) {
   if (!agencyId) {
     return {
       ok: false as const,
@@ -986,7 +1011,7 @@ export async function listVouchers(agencyId: string) {
     };
   }
 
-  const vouchers = await prisma.voucher.findMany({
+  const vouchers = await db.voucher.findMany({
     where: { agencyId },
     orderBy: { createdAt: "desc" },
   });
@@ -994,7 +1019,11 @@ export async function listVouchers(agencyId: string) {
   return { ok: true as const, data: vouchers };
 }
 
-export async function getVoucherById(agencyId: string, id: string) {
+export async function getVoucherById(
+  agencyId: string,
+  id: string,
+  db: AdminDbClient = prisma
+) {
   if (!agencyId) {
     return {
       ok: false as const,
@@ -1006,7 +1035,7 @@ export async function getVoucherById(agencyId: string, id: string) {
     return { ok: false as const, status: 400, message: "ID inválido" };
   }
 
-  const voucher = await prisma.voucher.findFirst({
+  const voucher = await db.voucher.findFirst({
     where: { id, agencyId },
     include: { flights: true, tours: true, hotel: true, transfer: true },
   });
