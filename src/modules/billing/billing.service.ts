@@ -14,6 +14,7 @@ import {
 import { resolveIbgeCityCode } from "./cityCodeLookup";
 import { getSubscriptionPlan, listSubscriptionPlans } from "./plans";
 import { lookupBrazilianPostalCode } from "./postalCodeLookup";
+import { verifyRenewalAccessToken } from "./renewal";
 
 export type SignupPayload = {
   planCode?: string;
@@ -21,6 +22,7 @@ export type SignupPayload = {
   contactName?: string;
   email?: string;
   password?: string;
+  renewalToken?: string;
   phone?: string;
   cpfCnpj?: string;
   postalCode?: string;
@@ -32,6 +34,22 @@ export type SignupPayload = {
   state?: string;
   website?: string;
   termsAccepted?: boolean;
+};
+
+export type RenewalPrefillResponse = {
+  agencyName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  cpfCnpj: string;
+  postalCode: string;
+  address: string;
+  addressNumber: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  website: string;
 };
 
 type SignupContext = {
@@ -57,10 +75,77 @@ export function getPublicPlans() {
   return listSubscriptionPlans();
 }
 
+export async function getRenewalPrefill(token: string) {
+  const payload = (() => {
+    try {
+      return verifyRenewalAccessToken(token);
+    } catch {
+      throw new BillingValidationError("Token de renovacao invalido.");
+    }
+  })();
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      agencyId: true,
+      agency: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          contactName: true,
+          document: true,
+          postalCode: true,
+          street: true,
+          addressNumber: true,
+          complement: true,
+          neighborhood: true,
+          city: true,
+          state: true,
+          website: true,
+        },
+      },
+    },
+  });
+
+  if (
+    !user?.agency ||
+    user.agencyId !== payload.agencyId ||
+    normalizeEmail(user.email) !== normalizeEmail(payload.email)
+  ) {
+    throw new BillingValidationError("Token de renovacao invalido.");
+  }
+
+  return {
+    agencyName: user.agency.name,
+    contactName: user.agency.contactName || user.name,
+    email: normalizeEmail(user.email),
+    phone: user.agency.phone || "",
+    cpfCnpj: user.agency.document || "",
+    postalCode: user.agency.postalCode || "",
+    address: user.agency.street || "",
+    addressNumber: user.agency.addressNumber || "",
+    complement: user.agency.complement || "",
+    neighborhood: user.agency.neighborhood || "",
+    city: user.agency.city || "",
+    state: user.agency.state || "",
+    website: user.agency.website || "",
+  } satisfies RenewalPrefillResponse;
+}
+
 export async function createAgencySignup(payload: SignupPayload) {
-  const valid = validateSignupPayload(payload);
+  const renewalAccess = resolveSignupRenewalAccess(payload.renewalToken);
+  const valid = validateSignupPayload(payload, {
+    requirePassword: !renewalAccess,
+  });
   const normalizedAddress = await normalizeSignupAddress(valid);
-  const passwordHash = await bcrypt.hash(valid.password, 10);
+  const passwordHash = renewalAccess
+    ? null
+    : await bcrypt.hash(valid.password, 10);
 
   const context = await prisma.$transaction(async (tx) => {
     const existingUser = await tx.user.findUnique({
@@ -91,6 +176,17 @@ export async function createAgencySignup(payload: SignupPayload) {
       );
     }
 
+    if (renewalAccess) {
+      if (
+        !existingUser?.agencyId ||
+        existingUser.id !== renewalAccess.userId ||
+        existingUser.agencyId !== renewalAccess.agencyId ||
+        valid.email !== normalizeEmail(renewalAccess.email)
+      ) {
+        throw new BillingValidationError("Token de renovacao invalido.");
+      }
+    }
+
     let agencyId = existingUser?.agency?.id ?? "";
     const sessionToken = generatePublicToken();
     if (existingUser?.agencyId) {
@@ -118,11 +214,15 @@ export async function createAgencySignup(payload: SignupPayload) {
         where: { id: existingUser.id },
         data: {
           name: valid.contactName,
-          passwordHash,
           role: "ADMIN",
+          ...(passwordHash ? { passwordHash } : {}),
         },
       });
     } else {
+      if (renewalAccess || !passwordHash) {
+        throw new BillingValidationError("Token de renovacao invalido.");
+      }
+
       const slug = await generateUniqueAgencySlug(tx, valid.agencyName);
       const agency = await tx.agency.create({
         data: {
@@ -487,7 +587,10 @@ async function generateUniqueAgencySlug(
   return `${baseSlug}-${Date.now()}`;
 }
 
-function validateSignupPayload(payload: SignupPayload) {
+function validateSignupPayload(
+  payload: SignupPayload,
+  options: { requirePassword?: boolean } = {}
+) {
   const plan = getSubscriptionPlan(payload.planCode);
   if (!plan) {
     throw new BillingValidationError("Plano invalido.");
@@ -508,6 +611,7 @@ function validateSignupPayload(payload: SignupPayload) {
   const state = String(payload.state ?? "").trim().toUpperCase();
   const website = String(payload.website ?? "").trim();
   const termsAccepted = payload.termsAccepted === true;
+  const requirePassword = options.requirePassword !== false;
 
   if (agencyName.length < 2) {
     throw new BillingValidationError("Informe o nome da agencia.");
@@ -521,7 +625,7 @@ function validateSignupPayload(payload: SignupPayload) {
     throw new BillingValidationError("Informe um email valido.");
   }
 
-  if (password.length < 8) {
+  if (requirePassword && password.length < 8) {
     throw new BillingValidationError(
       "A senha precisa ter no minimo 8 caracteres."
     );
@@ -586,6 +690,20 @@ function validateSignupPayload(payload: SignupPayload) {
     state,
     website,
   };
+}
+
+function resolveSignupRenewalAccess(renewalToken: string | undefined) {
+  const trimmedToken = String(renewalToken ?? "").trim();
+
+  if (!trimmedToken) {
+    return null;
+  }
+
+  try {
+    return verifyRenewalAccessToken(trimmedToken);
+  } catch {
+    throw new BillingValidationError("Token de renovacao invalido.");
+  }
 }
 
 async function normalizeSignupAddress(valid: ReturnType<typeof validateSignupPayload>) {

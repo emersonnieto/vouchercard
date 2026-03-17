@@ -9,7 +9,10 @@ import {
 } from "../auth/userRoles";
 import { requireAuth, AuthedRequest } from "../middlewares/requireAuth";
 import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
-import { buildSubscriptionRenewalUrl } from "../modules/billing/renewal";
+import {
+  buildSubscriptionRenewalUrl,
+  signRenewalAccessToken,
+} from "../modules/billing/renewal";
 
 export const authRouter = Router();
 
@@ -73,6 +76,14 @@ authRouter.post("/login", async (req, res) => {
 
       if (!agencyAccess.agencyFound || !agencyAccess.isActive) {
         const isSubscriptionExpired = agencyAccess.expiredBySchedule;
+        const renewalToken = isSubscriptionExpired
+          ? signRenewalAccessToken({
+              type: "billing-renewal",
+              userId: user.id,
+              agencyId,
+              email: user.email,
+            })
+          : null;
 
         return res.status(403).json({
           message: isSubscriptionExpired
@@ -86,7 +97,9 @@ authRouter.post("/login", async (req, res) => {
                 url: buildSubscriptionRenewalUrl({
                   email: user.email,
                   planCode: agencyAccess.planCode,
+                  token: renewalToken,
                 }),
+                token: renewalToken,
                 email: user.email,
                 planCode: agencyAccess.planCode,
                 expiresAt: agencyAccess.expiresAt,
