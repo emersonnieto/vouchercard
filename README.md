@@ -67,6 +67,8 @@ ASAAS_WEBHOOK_TOKEN=seu_token_de_webhook
 FRONTEND_APP_URL=http://localhost:5173
 SUPABASE_URL=https://seu-projeto.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=seu_service_role
+OPENAI_API_KEY=sua_chave_da_openai
+OPENAI_VOUCHER_ITINERARY_MODEL=gpt-5-mini
 ```
 
 3. Gere client Prisma:
@@ -127,6 +129,11 @@ npm run dev
 - `ASAAS_API_URL`, `ASAAS_CHECKOUT_BASE_URL` e `FRONTEND_APP_URL` devem ser configuradas explicitamente antes do deploy
 - `DATABASE_URL` fica reservado para migrações e fluxos de sistema (`signup`, `webhook`, rate limit, sweeper)
 - `DATABASE_URL_APP` deve usar uma role sem `BYPASSRLS` para as rotas autenticadas do painel
+
+Roteiro com IA:
+
+- `OPENAI_API_KEY` habilita a geracao automatica do roteiro sugestao por voucher; sem ela, o voucher continua sendo criado normalmente, apenas sem roteiro salvo
+- `OPENAI_VOUCHER_ITINERARY_MODEL` e opcional e por padrao usa `gpt-5-mini`
 
 ## Rollout de RLS
 

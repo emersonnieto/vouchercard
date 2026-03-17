@@ -9,6 +9,10 @@ import {
   fetchWithTimeout,
 } from "../../lib/fetchWithTimeout";
 import {
+  generateVoucherItinerary,
+  getVoucherItineraryLogMessage,
+} from "./voucherItinerary";
+import {
   BillingIntegrationError,
   BillingValidationError,
   cancelAgencySubscription,
@@ -53,6 +57,7 @@ type CreateVoucherInput = {
   reservationCode?: unknown;
   webCheckinCode?: unknown;
   clientName?: unknown;
+  tripDestination?: unknown;
   insuranceProvider?: unknown;
   insurancePhone?: unknown;
   insuranceEmail?: unknown;
@@ -69,6 +74,7 @@ type UpdateVoucherInput = {
   reservationCode?: unknown;
   webCheckinCode?: unknown;
   clientName?: unknown;
+  tripDestination?: unknown;
   insuranceProvider?: unknown;
   insurancePhone?: unknown;
   insuranceEmail?: unknown;
@@ -94,6 +100,53 @@ const MAX_PUBLIC_CODE_ATTEMPTS = 12;
 const SUPABASE_TIMEOUT_MS = 15_000;
 
 type AdminDbClient = RlsDbClient | typeof prisma;
+
+const voucherCreateInclude = {
+  flights: true,
+  tours: true,
+  hotel: true,
+  transfer: true,
+  agency: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      phone: true,
+      email: true,
+      isActive: true,
+      logoUrl: true,
+      primaryColor: true,
+    },
+  },
+} as const;
+
+type VoucherItineraryPayload = {
+  tripDestination?: string | null;
+  additionalNotes?: string | null;
+  flights: Array<{
+    direction: string;
+    flightDate?: string | null;
+    embarkAirport?: string | null;
+    disembarkAirport?: string | null;
+  }>;
+  tours: Array<{
+    tourDate?: string | null;
+    location?: string | null;
+  }>;
+  hotel?:
+    | {
+        hotelName: string;
+        city?: string | null;
+        country?: string | null;
+        nights?: number | null;
+      }
+    | null;
+  transfer?:
+    | {
+        receptiveName?: string | null;
+      }
+    | null;
+};
 
 function sortFlights<T extends { direction: string; segmentOrder?: number | null }>(flights: T[]) {
   return [...flights].sort(
@@ -154,6 +207,20 @@ async function generateUniquePublicCode(db: AdminDbClient) {
   throw new Error("Falha ao gerar codigo publico unico do voucher.");
 }
 
+function buildVoucherItineraryContext(data: VoucherItineraryPayload) {
+  return {
+    tripDestination: data.tripDestination ?? "",
+    hotelName: data.hotel?.hotelName,
+    hotelCity: data.hotel?.city,
+    hotelCountry: data.hotel?.country,
+    nights: data.hotel?.nights,
+    tours: data.tours,
+    flights: data.flights,
+    additionalNotes: data.additionalNotes,
+    transferReceptiveName: data.transfer?.receptiveName,
+  };
+}
+
 function normalizeVoucherPayload(
   input: Omit<CreateVoucherInput, "agencyId">,
 ) {
@@ -161,6 +228,7 @@ function normalizeVoucherPayload(
     reservationCode,
     webCheckinCode,
     clientName,
+    tripDestination,
     insuranceProvider,
     insurancePhone,
     insuranceEmail,
@@ -341,6 +409,7 @@ function normalizeVoucherPayload(
       reservationCode: reservationCode.trim(),
       webCheckinCode: asOptionalString(webCheckinCode) ?? null,
       clientName: clientName.trim(),
+      tripDestination: asOptionalString(tripDestination) ?? null,
       insuranceProvider: asOptionalString(insuranceProvider) ?? null,
       insurancePhone: asOptionalString(insurancePhone) ?? null,
       insuranceEmail: asOptionalString(insuranceEmail) ?? null,
@@ -832,6 +901,7 @@ export async function createVoucher(
         reservationCode: normalized.data.reservationCode,
         webCheckinCode: normalized.data.webCheckinCode,
         clientName: normalized.data.clientName,
+        tripDestination: normalized.data.tripDestination,
         insuranceProvider: normalized.data.insuranceProvider,
         insurancePhone: normalized.data.insurancePhone,
         insuranceEmail: normalized.data.insuranceEmail,
@@ -882,33 +952,42 @@ export async function createVoucher(
           ? { create: { receptiveName: normalized.data.transfer.receptiveName } }
           : undefined,
       },
-      include: {
-        flights: true,
-        tours: true,
-        hotel: true,
-        transfer: true,
-        agency: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            phone: true,
-            email: true,
-            isActive: true,
-            logoUrl: true,
-            primaryColor: true,
-          },
-        },
-      },
+      include: voucherCreateInclude,
     });
+
+    let createdWithItinerary = created;
+
+    if (normalized.data.tripDestination) {
+      try {
+        const generatedItinerary = await generateVoucherItinerary(
+          buildVoucherItineraryContext(normalized.data)
+        );
+
+        if (generatedItinerary) {
+          createdWithItinerary = await db.voucher.update({
+            where: { id: created.id },
+            data: {
+              itinerarySuggestion: generatedItinerary.text,
+              itineraryGeneratedAt: generatedItinerary.generatedAt,
+              itineraryModel: generatedItinerary.model,
+            },
+            include: voucherCreateInclude,
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[ITINERARY] Falha ao gerar roteiro para voucher ${created.id}: ${getVoucherItineraryLogMessage(error)}`
+        );
+      }
+    }
 
     return {
       ok: true as const,
       status: 201,
       data: {
-        ...created,
-        flights: sortFlights(created.flights),
-        tours: [...created.tours].sort((a, b) => a.sortOrder - b.sortOrder),
+        ...createdWithItinerary,
+        flights: sortFlights(createdWithItinerary.flights),
+        tours: [...createdWithItinerary.tours].sort((a, b) => a.sortOrder - b.sortOrder),
       },
     };
   } catch (err: any) {
@@ -938,7 +1017,11 @@ export async function updateVoucher(
 
   const existing = await db.voucher.findFirst({
     where: { id, agencyId },
-    select: { id: true },
+    select: {
+      id: true,
+      tripDestination: true,
+      itinerarySuggestion: true,
+    },
   });
 
   if (!existing) {
@@ -950,6 +1033,14 @@ export async function updateVoucher(
     return normalized;
   }
 
+  const nextTripDestination = normalized.data.tripDestination ?? null;
+  const currentTripDestination = existing.tripDestination?.trim() || null;
+  const tripDestinationChanged = currentTripDestination !== nextTripDestination;
+  const shouldResetItinerary = !nextTripDestination || tripDestinationChanged;
+  const shouldGenerateItinerary =
+    !!nextTripDestination &&
+    (tripDestinationChanged || !existing.itinerarySuggestion?.trim());
+
   try {
     await db.voucher.update({
       where: { id },
@@ -957,10 +1048,18 @@ export async function updateVoucher(
         reservationCode: normalized.data.reservationCode,
         webCheckinCode: normalized.data.webCheckinCode,
         clientName: normalized.data.clientName,
+        tripDestination: nextTripDestination,
         insuranceProvider: normalized.data.insuranceProvider,
         insurancePhone: normalized.data.insurancePhone,
         insuranceEmail: normalized.data.insuranceEmail,
         additionalNotes: normalized.data.additionalNotes,
+        ...(shouldResetItinerary
+          ? {
+              itinerarySuggestion: null,
+              itineraryGeneratedAt: null,
+              itineraryModel: null,
+            }
+          : {}),
       },
     });
 
@@ -1050,6 +1149,29 @@ export async function updateVoucher(
       });
     } else {
       await db.transfer.deleteMany({ where: { voucherId: id } });
+    }
+
+    if (shouldGenerateItinerary) {
+      try {
+        const generatedItinerary = await generateVoucherItinerary(
+          buildVoucherItineraryContext(normalized.data)
+        );
+
+        if (generatedItinerary) {
+          await db.voucher.update({
+            where: { id },
+            data: {
+              itinerarySuggestion: generatedItinerary.text,
+              itineraryGeneratedAt: generatedItinerary.generatedAt,
+              itineraryModel: generatedItinerary.model,
+            },
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[ITINERARY] Falha ao atualizar roteiro do voucher ${id}: ${getVoucherItineraryLogMessage(error)}`
+        );
+      }
     }
 
     const updated = await db.voucher.findFirst({

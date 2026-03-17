@@ -74,6 +74,10 @@ model Voucher {
   reservationCode   String
   webCheckinCode    String?
   clientName        String
+  tripDestination   String?
+  itinerarySuggestion String?
+  itineraryGeneratedAt DateTime?
+  itineraryModel    String?
   insuranceProvider String?
   insurancePhone    String?
   insuranceEmail    String?
