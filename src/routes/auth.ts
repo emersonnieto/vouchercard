@@ -76,7 +76,8 @@ authRouter.post("/login", async (req, res) => {
 
       if (!agencyAccess.agencyFound || !agencyAccess.isActive) {
         const isSubscriptionExpired = agencyAccess.expiredBySchedule;
-        const renewalToken = isSubscriptionExpired
+        const canOfferRenewal = agencyAccess.agencyFound;
+        const renewalToken = canOfferRenewal
           ? signRenewalAccessToken({
               type: "billing-renewal",
               userId: user.id,
@@ -88,15 +89,18 @@ authRouter.post("/login", async (req, res) => {
         return res.status(403).json({
           message: isSubscriptionExpired
             ? "Assinatura expirada. Renove para voltar a acessar o painel."
-            : "Agencia inativa. Contate o suporte.",
+            : "Agencia inativa. Reative a assinatura para voltar a acessar o painel.",
           code: isSubscriptionExpired
             ? "SUBSCRIPTION_EXPIRED"
             : "AGENCY_INACTIVE",
-          renewal: isSubscriptionExpired
+          renewal: canOfferRenewal
             ? {
                 url: buildSubscriptionRenewalUrl({
                   email: user.email,
                   planCode: agencyAccess.planCode,
+                  reason: isSubscriptionExpired
+                    ? "subscription_expired"
+                    : "agency_inactive",
                   token: renewalToken,
                 }),
                 token: renewalToken,
