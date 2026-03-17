@@ -9,8 +9,8 @@ import {
   fetchWithTimeout,
 } from "../../lib/fetchWithTimeout";
 import {
-  generateVoucherItinerary,
   getVoucherItineraryLogMessage,
+  generateVoucherItinerary,
 } from "./voucherItinerary";
 import {
   BillingIntegrationError,
@@ -146,6 +146,19 @@ type VoucherItineraryPayload = {
         receptiveName?: string | null;
       }
     | null;
+};
+
+type VoucherItineraryPostProcess = {
+  voucherId: string;
+  agencyId: string;
+  itineraryContext: ReturnType<typeof buildVoucherItineraryContext>;
+};
+
+type VoucherMutationSuccess<T> = {
+  ok: true;
+  status?: number;
+  data: T;
+  postProcess?: VoucherItineraryPostProcess;
 };
 
 function sortFlights<T extends { direction: string; segmentOrder?: number | null }>(flights: T[]) {
@@ -955,41 +968,25 @@ export async function createVoucher(
       include: voucherCreateInclude,
     });
 
-    let createdWithItinerary = created;
-
-    if (normalized.data.tripDestination) {
-      try {
-        const generatedItinerary = await generateVoucherItinerary(
-          buildVoucherItineraryContext(normalized.data)
-        );
-
-        if (generatedItinerary) {
-          createdWithItinerary = await db.voucher.update({
-            where: { id: created.id },
-            data: {
-              itinerarySuggestion: generatedItinerary.text,
-              itineraryGeneratedAt: generatedItinerary.generatedAt,
-              itineraryModel: generatedItinerary.model,
-            },
-            include: voucherCreateInclude,
-          });
-        }
-      } catch (error) {
-        console.error(
-          `[ITINERARY] Falha ao gerar roteiro para voucher ${created.id}: ${getVoucherItineraryLogMessage(error)}`
-        );
-      }
-    }
-
-    return {
+    const result: VoucherMutationSuccess<typeof created> = {
       ok: true as const,
       status: 201,
       data: {
-        ...createdWithItinerary,
-        flights: sortFlights(createdWithItinerary.flights),
-        tours: [...createdWithItinerary.tours].sort((a, b) => a.sortOrder - b.sortOrder),
+        ...created,
+        flights: sortFlights(created.flights),
+        tours: [...created.tours].sort((a, b) => a.sortOrder - b.sortOrder),
       },
     };
+
+    if (normalized.data.tripDestination) {
+      result.postProcess = {
+        voucherId: created.id,
+        agencyId,
+        itineraryContext: buildVoucherItineraryContext(normalized.data),
+      };
+    }
+
+    return result;
   } catch (err: any) {
     if (err?.code === "P2002") {
       return { ok: false as const, status: 409, message: "reservationCode já existe" };
@@ -1151,29 +1148,6 @@ export async function updateVoucher(
       await db.transfer.deleteMany({ where: { voucherId: id } });
     }
 
-    if (shouldGenerateItinerary) {
-      try {
-        const generatedItinerary = await generateVoucherItinerary(
-          buildVoucherItineraryContext(normalized.data)
-        );
-
-        if (generatedItinerary) {
-          await db.voucher.update({
-            where: { id },
-            data: {
-              itinerarySuggestion: generatedItinerary.text,
-              itineraryGeneratedAt: generatedItinerary.generatedAt,
-              itineraryModel: generatedItinerary.model,
-            },
-          });
-        }
-      } catch (error) {
-        console.error(
-          `[ITINERARY] Falha ao atualizar roteiro do voucher ${id}: ${getVoucherItineraryLogMessage(error)}`
-        );
-      }
-    }
-
     const updated = await db.voucher.findFirst({
       where: { id, agencyId },
       include: { flights: true, tours: true, hotel: true, transfer: true },
@@ -1183,7 +1157,7 @@ export async function updateVoucher(
       return { ok: false as const, status: 404, message: "Voucher nÃ£o encontrado" };
     }
 
-    return {
+    const result: VoucherMutationSuccess<typeof updated> = {
       ok: true as const,
       data: {
         ...updated,
@@ -1191,6 +1165,16 @@ export async function updateVoucher(
         tours: [...updated.tours].sort((a, b) => a.sortOrder - b.sortOrder),
       },
     };
+
+    if (shouldGenerateItinerary) {
+      result.postProcess = {
+        voucherId: id,
+        agencyId,
+        itineraryContext: buildVoucherItineraryContext(normalized.data),
+      };
+    }
+
+    return result;
   } catch (err: any) {
     if (err?.code === "P2002") {
       return { ok: false as const, status: 409, message: "reservationCode jÃ¡ existe" };
@@ -1198,6 +1182,54 @@ export async function updateVoucher(
     throw err;
   }
 }
+
+export async function persistVoucherItinerary(
+  input: {
+    agencyId: string;
+    voucherId: string;
+    generatedItinerary: {
+      text: string;
+      model: string;
+      generatedAt: Date;
+    };
+  },
+  db: AdminDbClient = prisma
+) {
+  const voucher = await db.voucher.findFirst({
+    where: { id: input.voucherId, agencyId: input.agencyId },
+    select: { id: true },
+  });
+
+  if (!voucher) {
+    return {
+      ok: false as const,
+      status: 404,
+      message: "Voucher nao encontrado para salvar o roteiro.",
+    };
+  }
+
+  const updated = await db.voucher.update({
+    where: { id: input.voucherId },
+    data: {
+      itinerarySuggestion: input.generatedItinerary.text,
+      itineraryGeneratedAt: input.generatedItinerary.generatedAt,
+      itineraryModel: input.generatedItinerary.model,
+    },
+  });
+
+  return {
+    ok: true as const,
+    data: updated,
+  };
+}
+
+export async function generateVoucherItineraryForContext(
+  context: ReturnType<typeof buildVoucherItineraryContext>
+) {
+  return generateVoucherItinerary(context);
+}
+
+export { getVoucherItineraryLogMessage };
 
 export async function listVouchers(
   agencyId: string,

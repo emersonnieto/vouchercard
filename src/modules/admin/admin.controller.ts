@@ -8,6 +8,20 @@ type ServiceResult<T = unknown> =
   | { ok: true; status?: number; data: T }
   | { ok: false; status: number; message: string };
 
+type VoucherItineraryPostProcess = {
+  voucherId: string;
+  agencyId: string;
+  itineraryContext: Awaited<
+    ReturnType<typeof adminService.generateVoucherItineraryForContext>
+  > extends never
+    ? never
+    : Parameters<typeof adminService.generateVoucherItineraryForContext>[0];
+};
+
+type ServiceResultWithPostProcess<T = unknown> = ServiceResult<T> & {
+  postProcess?: VoucherItineraryPostProcess;
+};
+
 function reply<T>(res: Response, result: ServiceResult<T>) {
   if (!result.ok) {
     return res.status(result.status).json({ message: result.message });
@@ -24,6 +38,56 @@ async function runAdminDb<T>(
   }
 
   return runWithRlsContext(req.user, callback);
+}
+
+async function finishVoucherItinerary<T extends Record<string, unknown>>(
+  req: AuthedRequest,
+  result: ServiceResultWithPostProcess<T>
+) {
+  if (!result.ok || !result.postProcess) {
+    return result;
+  }
+
+  try {
+    const generatedItinerary = await adminService.generateVoucherItineraryForContext(
+      result.postProcess.itineraryContext
+    );
+
+    if (!generatedItinerary) {
+      return result;
+    }
+
+    const persisted = await runAdminDb(req, (db) =>
+      adminService.persistVoucherItinerary(
+        {
+          agencyId: result.postProcess!.agencyId,
+          voucherId: result.postProcess!.voucherId,
+          generatedItinerary,
+        },
+        db
+      )
+    );
+
+    if (!persisted.ok) {
+      console.error(
+        `[ITINERARY] Nao foi possivel salvar o roteiro do voucher ${result.postProcess.voucherId}: ${persisted.message}`
+      );
+      return result;
+    }
+
+    result.data = {
+      ...result.data,
+      itinerarySuggestion: generatedItinerary.text,
+      itineraryGeneratedAt: generatedItinerary.generatedAt,
+      itineraryModel: generatedItinerary.model,
+    };
+  } catch (error) {
+    console.error(
+      `[ITINERARY] Falha ao gerar roteiro para voucher ${result.postProcess.voucherId}: ${adminService.getVoucherItineraryLogMessage(error)}`
+    );
+  }
+
+  return result;
 }
 
 export async function getMe(req: AuthedRequest, res: Response) {
@@ -207,7 +271,8 @@ export async function createVoucher(req: AuthedRequest, res: Response) {
         db
       )
     );
-    return reply(res, result);
+    const completedResult = await finishVoucherItinerary(req, result);
+    return reply(res, completedResult);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Erro interno" });
@@ -269,7 +334,8 @@ export async function updateVoucher(req: AuthedRequest, res: Response) {
         db
       )
     );
-    return reply(res, result);
+    const completedResult = await finishVoucherItinerary(req, result);
+    return reply(res, completedResult);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Erro interno" });
