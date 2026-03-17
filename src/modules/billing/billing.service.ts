@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import { Prisma, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
-import { AsaasClient } from "./asaas.client";
+import { AsaasApiError, AsaasClient } from "./asaas.client";
 import {
   generatePublicToken,
   isValidCpfCnpj,
@@ -15,6 +15,7 @@ import { resolveIbgeCityCode } from "./cityCodeLookup";
 import { getSubscriptionPlan, listSubscriptionPlans } from "./plans";
 import { lookupBrazilianPostalCode } from "./postalCodeLookup";
 import { verifyRenewalAccessToken } from "./renewal";
+import { getSubscriptionAccessEndsAt } from "./subscriptionAccess";
 
 export type SignupPayload = {
   planCode?: string;
@@ -62,6 +63,13 @@ type SignupContext = {
 type EventLookup = {
   id: string;
   agencyId: string;
+  provider: string;
+  plan: "MONTHLY" | "SEMIANNUAL" | "ANNUAL";
+  status: SubscriptionStatus;
+  billingCycleMonths: number;
+  commitmentMonths: number;
+  price: Prisma.Decimal;
+  currency: string;
   providerCheckoutId: string | null;
   providerCustomerId: string | null;
   providerSubscriptionId: string | null;
@@ -71,8 +79,128 @@ type EventLookup = {
   canceledAt: Date | null;
 };
 
+type BillingDbClient = Prisma.TransactionClient | typeof prisma;
+
+type SubscriptionSummaryRecord = {
+  id: string;
+  provider: string;
+  plan: "MONTHLY" | "SEMIANNUAL" | "ANNUAL";
+  status: SubscriptionStatus;
+  billingCycleMonths: number;
+  commitmentMonths: number;
+  price: Prisma.Decimal;
+  currency: string;
+  activatedAt: Date | null;
+  canceledAt: Date | null;
+  providerSubscriptionId: string | null;
+};
+
+export type AgencySubscriptionSummary = {
+  id: string;
+  provider: string;
+  planCode: "MONTHLY" | "SEMIANNUAL" | "ANNUAL";
+  planName: string;
+  status: SubscriptionStatus;
+  billingCycleMonths: number;
+  commitmentMonths: number;
+  price: number;
+  currency: string;
+  activatedAt: Date | null;
+  canceledAt: Date | null;
+  accessEndsAt: Date | null;
+  cancelAtPeriodEnd: boolean;
+  canCancel: boolean;
+};
+
 export function getPublicPlans() {
   return listSubscriptionPlans();
+}
+
+export async function getAgencySubscriptionSummary(
+  agencyId: string,
+  db: BillingDbClient = prisma
+) {
+  const normalizedAgencyId = String(agencyId ?? "").trim();
+
+  if (!normalizedAgencyId) {
+    return null;
+  }
+
+  const subscription = await db.agencySubscription.findFirst({
+    where: {
+      agencyId: normalizedAgencyId,
+      status: SubscriptionStatus.ACTIVE,
+    },
+    orderBy: [{ activatedAt: "desc" }, { createdAt: "desc" }],
+    select: subscriptionSummarySelect,
+  });
+
+  if (!subscription) {
+    return null;
+  }
+
+  return mapAgencySubscriptionSummary(subscription);
+}
+
+export async function cancelAgencySubscription(
+  agencyId: string,
+  db: BillingDbClient = prisma,
+  now: Date = new Date()
+) {
+  const normalizedAgencyId = String(agencyId ?? "").trim();
+
+  if (!normalizedAgencyId) {
+    throw new BillingValidationError("Agencia invalida.");
+  }
+
+  const subscription = await db.agencySubscription.findFirst({
+    where: {
+      agencyId: normalizedAgencyId,
+      status: SubscriptionStatus.ACTIVE,
+      activatedAt: { not: null },
+    },
+    orderBy: [{ activatedAt: "desc" }, { createdAt: "desc" }],
+    select: subscriptionSummarySelect,
+  });
+
+  if (!subscription) {
+    throw new BillingValidationError("Nenhuma assinatura ativa foi encontrada.");
+  }
+
+  if (subscription.canceledAt) {
+    return mapAgencySubscriptionSummary(subscription);
+  }
+
+  const providerSubscriptionId = subscription.providerSubscriptionId?.trim();
+
+  if (!providerSubscriptionId) {
+    throw new BillingValidationError(
+      "Nao foi possivel localizar a cobranca recorrente desta assinatura. Contate o suporte."
+    );
+  }
+
+  try {
+    await getAsaasClient().cancelSubscription(providerSubscriptionId);
+  } catch (error) {
+    if (!(error instanceof AsaasApiError && error.statusCode === 404)) {
+      throw new BillingIntegrationError(
+        error instanceof Error
+          ? error.message
+          : "Falha ao cancelar a assinatura no Asaas."
+      );
+    }
+  }
+
+  const updatedSubscription = await db.agencySubscription.update({
+    where: { id: subscription.id },
+    data: {
+      canceledAt: now,
+      lastEventAt: now,
+    },
+    select: subscriptionSummarySelect,
+  });
+
+  return mapAgencySubscriptionSummary(updatedSubscription);
 }
 
 export async function getRenewalPrefill(token: string) {
@@ -526,8 +654,21 @@ export async function handleAsaasWebhookEvent(
     eventName === "CHECKOUT_CREATED" && Number.isFinite(checkoutMinutesToExpire)
       ? new Date(Date.now() + checkoutMinutesToExpire * 60_000)
       : undefined;
+  const shouldScheduleCancellation =
+    statusDecision.status === SubscriptionStatus.CANCELED &&
+    isPeriodEndCancellationEvent(eventName) &&
+    !!agencySubscription.activatedAt;
 
   await prisma.$transaction(async (tx) => {
+    const nextStatus = shouldScheduleCancellation
+      ? SubscriptionStatus.ACTIVE
+      : statusDecision.status;
+    const nextCanceledAt = shouldScheduleCancellation
+      ? agencySubscription.canceledAt ?? new Date()
+      : statusDecision.status === SubscriptionStatus.CANCELED
+      ? new Date()
+      : agencySubscription.canceledAt;
+
     await tx.agencySubscription.update({
       where: { id: agencySubscription.id },
       data: {
@@ -536,17 +677,14 @@ export async function handleAsaasWebhookEvent(
         providerSubscriptionId:
           providerSubscriptionId ?? agencySubscription.providerSubscriptionId,
         latestPaymentId: paymentId ?? agencySubscription.latestPaymentId,
-        status: statusDecision.status,
+        status: nextStatus,
         checkoutExpiresAt:
           checkoutExpiresAt ?? agencySubscription.checkoutExpiresAt ?? undefined,
         activatedAt:
-          statusDecision.status === SubscriptionStatus.ACTIVE
+          nextStatus === SubscriptionStatus.ACTIVE
             ? agencySubscription.activatedAt ?? new Date()
             : agencySubscription.activatedAt,
-        canceledAt:
-          statusDecision.status === SubscriptionStatus.CANCELED
-            ? new Date()
-            : agencySubscription.canceledAt,
+        canceledAt: nextCanceledAt,
         lastEventAt: new Date(),
       },
     });
@@ -555,7 +693,7 @@ export async function handleAsaasWebhookEvent(
       where: { id: agencySubscription.agencyId },
       data: {
         asaasCustomerId: customerId ?? undefined,
-        isActive: statusDecision.activateAgency,
+        isActive: shouldScheduleCancellation ? true : statusDecision.activateAgency,
       },
     });
   });
@@ -779,6 +917,13 @@ async function findSubscriptionForEvent(filters: {
 const lookupSelect = {
   id: true,
   agencyId: true,
+  provider: true,
+  plan: true,
+  status: true,
+  billingCycleMonths: true,
+  commitmentMonths: true,
+  price: true,
+  currency: true,
   providerCheckoutId: true,
   providerCustomerId: true,
   providerSubscriptionId: true,
@@ -786,6 +931,20 @@ const lookupSelect = {
   checkoutExpiresAt: true,
   activatedAt: true,
   canceledAt: true,
+} as const;
+
+const subscriptionSummarySelect = {
+  id: true,
+  provider: true,
+  plan: true,
+  status: true,
+  billingCycleMonths: true,
+  commitmentMonths: true,
+  price: true,
+  currency: true,
+  activatedAt: true,
+  canceledAt: true,
+  providerSubscriptionId: true,
 } as const;
 
 function asRecord(value: unknown) {
@@ -798,6 +957,42 @@ function asRecord(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function mapAgencySubscriptionSummary(
+  subscription: SubscriptionSummaryRecord
+): AgencySubscriptionSummary {
+  const plan = getSubscriptionPlan(subscription.plan);
+  const accessEndsAt = subscription.activatedAt
+    ? getSubscriptionAccessEndsAt({
+        activatedAt: subscription.activatedAt,
+        billingCycleMonths: subscription.billingCycleMonths,
+        commitmentMonths: subscription.commitmentMonths,
+        canceledAt: subscription.canceledAt,
+      })
+    : null;
+
+  return {
+    id: subscription.id,
+    provider: subscription.provider,
+    planCode: subscription.plan,
+    planName: plan?.name ?? subscription.plan,
+    status: subscription.status,
+    billingCycleMonths: subscription.billingCycleMonths,
+    commitmentMonths: subscription.commitmentMonths,
+    price: Number(subscription.price),
+    currency: subscription.currency,
+    activatedAt: subscription.activatedAt,
+    canceledAt: subscription.canceledAt,
+    accessEndsAt,
+    cancelAtPeriodEnd: !!subscription.canceledAt,
+    canCancel:
+      subscription.status === SubscriptionStatus.ACTIVE && !subscription.canceledAt,
+  };
+}
+
+function isPeriodEndCancellationEvent(eventName: string) {
+  return eventName === "PAYMENT_DELETED" || eventName === "SUBSCRIPTION_DELETED";
 }
 
 export class BillingValidationError extends Error {

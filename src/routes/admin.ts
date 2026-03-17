@@ -5,6 +5,16 @@ import * as adminController from "../modules/admin/admin.controller";
 export const adminRouter = Router();
 
 adminRouter.get("/me", adminController.getMe);
+adminRouter.get(
+  "/subscription",
+  requireRole(["ADMIN"]),
+  adminController.getAgencySubscription
+);
+adminRouter.post(
+  "/subscription/cancel",
+  requireRole(["ADMIN"]),
+  adminController.cancelAgencySubscription
+);
 
 adminRouter.get(
   "/agencies",

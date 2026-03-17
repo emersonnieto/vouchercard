@@ -42,6 +42,34 @@ export async function getMe(req: AuthedRequest, res: Response) {
   }
 }
 
+export async function getAgencySubscription(req: AuthedRequest, res: Response) {
+  try {
+    const agencyId = String(req.user?.agencyId ?? "").trim();
+
+    const result = await runAdminDb(req, (db) =>
+      adminService.getAgencySubscription(agencyId, db)
+    );
+    return reply(res, result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+}
+
+export async function cancelAgencySubscription(req: AuthedRequest, res: Response) {
+  try {
+    const agencyId = String(req.user?.agencyId ?? "").trim();
+
+    const result = await runAdminDb(req, (db) =>
+      adminService.cancelAgencySubscriptionAtPeriodEnd(agencyId, db)
+    );
+    return reply(res, result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+}
+
 export async function listAgencies(req: AuthedRequest, res: Response) {
   try {
     const agencies = await runAdminDb(req, (db) =>

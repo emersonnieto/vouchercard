@@ -10,6 +10,9 @@ const {
 const { getSubscriptionPlan } = require("../src/modules/billing/plans");
 const {
   getSubscriptionExpiresAt,
+  getSubscriptionAccessEndsAt,
+  getNextSubscriptionBillingDate,
+  hasSubscriptionAccessReachedEnd,
   hasSubscriptionReachedEnd,
 } = require("../src/modules/billing/subscriptionAccess");
 
@@ -69,6 +72,59 @@ test("hasSubscriptionReachedEnd blocks access once the commitment window ends", 
       activatedAt,
       1,
       new Date("2026-02-10T12:00:00.000Z")
+    ),
+    true
+  );
+});
+
+test("getNextSubscriptionBillingDate finds the first due date after the cancel request", () => {
+  const activatedAt = new Date("2026-01-10T12:00:00.000Z");
+  const canceledAt = new Date("2026-03-17T09:30:00.000Z");
+
+  const nextDueDate = getNextSubscriptionBillingDate(activatedAt, 1, canceledAt);
+
+  assert.equal(nextDueDate.toISOString(), "2026-04-10T12:00:00.000Z");
+});
+
+test("getSubscriptionAccessEndsAt uses the next billing cycle after cancellation", () => {
+  const activatedAt = new Date("2026-01-10T12:00:00.000Z");
+  const canceledAt = new Date("2026-03-17T09:30:00.000Z");
+
+  const accessEndsAt = getSubscriptionAccessEndsAt({
+    activatedAt,
+    billingCycleMonths: 1,
+    commitmentMonths: 12,
+    canceledAt,
+  });
+
+  assert.equal(accessEndsAt.toISOString(), "2026-04-10T12:00:00.000Z");
+});
+
+test("hasSubscriptionAccessReachedEnd expires canceled subscriptions at the end of the paid cycle", () => {
+  const activatedAt = new Date("2026-01-10T12:00:00.000Z");
+  const canceledAt = new Date("2026-03-17T09:30:00.000Z");
+
+  assert.equal(
+    hasSubscriptionAccessReachedEnd(
+      {
+        activatedAt,
+        billingCycleMonths: 1,
+        commitmentMonths: 12,
+        canceledAt,
+      },
+      new Date("2026-04-10T11:59:59.000Z")
+    ),
+    false
+  );
+  assert.equal(
+    hasSubscriptionAccessReachedEnd(
+      {
+        activatedAt,
+        billingCycleMonths: 1,
+        commitmentMonths: 12,
+        canceledAt,
+      },
+      new Date("2026-04-10T12:00:00.000Z")
     ),
     true
   );

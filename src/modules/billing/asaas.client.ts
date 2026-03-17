@@ -167,6 +167,18 @@ export class AsaasClient {
     };
   }
 
+  async cancelSubscription(subscriptionId: string) {
+    const normalizedSubscriptionId = String(subscriptionId ?? "").trim();
+
+    if (!normalizedSubscriptionId) {
+      throw new AsaasApiError("Assinatura do Asaas nao informada.", 400);
+    }
+
+    await this.request(`/subscriptions/${normalizedSubscriptionId}`, {
+      method: "DELETE",
+    });
+  }
+
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     let response: Response;
 

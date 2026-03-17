@@ -8,6 +8,12 @@ import {
   ExternalRequestTimeoutError,
   fetchWithTimeout,
 } from "../../lib/fetchWithTimeout";
+import {
+  BillingIntegrationError,
+  BillingValidationError,
+  cancelAgencySubscription,
+  getAgencySubscriptionSummary,
+} from "../billing/billing.service";
 
 type CreateAgencyInput = {
   name?: unknown;
@@ -423,6 +429,58 @@ export async function getMe(userId: string, db: AdminDbClient = prisma) {
     : null;
 
   return { user, agency };
+}
+
+export async function getAgencySubscription(
+  agencyId: string,
+  db: AdminDbClient = prisma
+) {
+  if (!agencyId) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Sua conta nao possui agencia vinculada.",
+    };
+  }
+
+  const subscription = await getAgencySubscriptionSummary(agencyId, db);
+  return { ok: true as const, data: subscription };
+}
+
+export async function cancelAgencySubscriptionAtPeriodEnd(
+  agencyId: string,
+  db: AdminDbClient = prisma
+) {
+  if (!agencyId) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Sua conta nao possui agencia vinculada.",
+    };
+  }
+
+  try {
+    const subscription = await cancelAgencySubscription(agencyId, db);
+    return { ok: true as const, data: subscription };
+  } catch (error) {
+    if (error instanceof BillingValidationError) {
+      return {
+        ok: false as const,
+        status: 400,
+        message: error.message,
+      };
+    }
+
+    if (error instanceof BillingIntegrationError) {
+      return {
+        ok: false as const,
+        status: 502,
+        message: error.message,
+      };
+    }
+
+    throw error;
+  }
 }
 
 export async function listAgencies(db: AdminDbClient = prisma) {
