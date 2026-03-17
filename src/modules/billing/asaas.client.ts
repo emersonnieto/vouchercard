@@ -65,6 +65,22 @@ type AsaasCheckoutResponse = {
   status?: string;
 };
 
+type AsaasListResponse<T> = {
+  object: "list";
+  hasMore?: boolean;
+  totalCount?: number;
+  limit?: number;
+  offset?: number;
+  data?: T[];
+};
+
+export type AsaasSubscriptionRecord = {
+  id: string;
+  customer?: string | null;
+  status?: string | null;
+  checkoutSession?: string | null;
+};
+
 type AsaasErrorPayload = {
   errors?: Array<{ code?: string; description?: string }>;
 };
@@ -177,6 +193,44 @@ export class AsaasClient {
     await this.request(`/subscriptions/${normalizedSubscriptionId}`, {
       method: "DELETE",
     });
+  }
+
+  async findActiveSubscriptionByCheckoutSession(checkoutSessionId: string) {
+    const normalizedCheckoutSessionId = String(checkoutSessionId ?? "").trim();
+
+    if (!normalizedCheckoutSessionId) {
+      throw new AsaasApiError("Checkout do Asaas nao informado.", 400);
+    }
+
+    const pageSize = 100;
+
+    for (let offset = 0; offset < 2_000; offset += pageSize) {
+      const search = new URLSearchParams({
+        status: "ACTIVE",
+        limit: String(pageSize),
+        offset: String(offset),
+      });
+
+      const response = await this.request<AsaasListResponse<AsaasSubscriptionRecord>>(
+        `/subscriptions?${search.toString()}`,
+        { method: "GET" }
+      );
+
+      const items = Array.isArray(response.data) ? response.data : [];
+      const match = items.find(
+        (item) => item.checkoutSession?.trim() === normalizedCheckoutSessionId
+      );
+
+      if (match) {
+        return match;
+      }
+
+      if (!response.hasMore || !items.length) {
+        break;
+      }
+    }
+
+    return null;
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {

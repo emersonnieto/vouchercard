@@ -95,6 +95,11 @@ type SubscriptionSummaryRecord = {
   providerSubscriptionId: string | null;
 };
 
+type CancelableSubscriptionRecord = SubscriptionSummaryRecord & {
+  providerCheckoutId: string | null;
+  providerCustomerId: string | null;
+};
+
 export type AgencySubscriptionSummary = {
   id: string;
   provider: string;
@@ -160,7 +165,7 @@ export async function cancelAgencySubscription(
       activatedAt: { not: null },
     },
     orderBy: [{ activatedAt: "desc" }, { createdAt: "desc" }],
-    select: subscriptionSummarySelect,
+    select: cancelableSubscriptionSelect,
   });
 
   if (!subscription) {
@@ -171,7 +176,8 @@ export async function cancelAgencySubscription(
     return mapAgencySubscriptionSummary(subscription);
   }
 
-  const providerSubscriptionId = subscription.providerSubscriptionId?.trim();
+  const remoteSubscription = await resolveRemoteAsaasSubscription(subscription);
+  const providerSubscriptionId = remoteSubscription?.id?.trim();
 
   if (!providerSubscriptionId) {
     throw new BillingValidationError(
@@ -194,6 +200,9 @@ export async function cancelAgencySubscription(
   const updatedSubscription = await db.agencySubscription.update({
     where: { id: subscription.id },
     data: {
+      providerCustomerId:
+        remoteSubscription?.customer?.trim() || subscription.providerCustomerId || undefined,
+      providerSubscriptionId,
       canceledAt: now,
       lastEventAt: now,
     },
@@ -654,6 +663,19 @@ export async function handleAsaasWebhookEvent(
     eventName === "CHECKOUT_CREATED" && Number.isFinite(checkoutMinutesToExpire)
       ? new Date(Date.now() + checkoutMinutesToExpire * 60_000)
       : undefined;
+  const recoveredRemoteSubscription = await recoverRemoteSubscriptionForEvent({
+    agencySubscription,
+    checkoutId,
+    providerSubscriptionId,
+  });
+  const resolvedProviderCustomerId =
+    customerId ??
+    recoveredRemoteSubscription?.customer?.trim() ??
+    agencySubscription.providerCustomerId;
+  const resolvedProviderSubscriptionId =
+    providerSubscriptionId ??
+    recoveredRemoteSubscription?.id?.trim() ??
+    agencySubscription.providerSubscriptionId;
   const shouldScheduleCancellation =
     statusDecision.status === SubscriptionStatus.CANCELED &&
     isPeriodEndCancellationEvent(eventName) &&
@@ -673,9 +695,8 @@ export async function handleAsaasWebhookEvent(
       where: { id: agencySubscription.id },
       data: {
         providerCheckoutId: checkoutId ?? agencySubscription.providerCheckoutId,
-        providerCustomerId: customerId ?? agencySubscription.providerCustomerId,
-        providerSubscriptionId:
-          providerSubscriptionId ?? agencySubscription.providerSubscriptionId,
+        providerCustomerId: resolvedProviderCustomerId,
+        providerSubscriptionId: resolvedProviderSubscriptionId,
         latestPaymentId: paymentId ?? agencySubscription.latestPaymentId,
         status: nextStatus,
         checkoutExpiresAt:
@@ -692,7 +713,7 @@ export async function handleAsaasWebhookEvent(
     await tx.agency.update({
       where: { id: agencySubscription.agencyId },
       data: {
-        asaasCustomerId: customerId ?? undefined,
+        asaasCustomerId: resolvedProviderCustomerId ?? undefined,
         isActive: shouldScheduleCancellation ? true : statusDecision.activateAgency,
       },
     });
@@ -878,6 +899,56 @@ function normalizeErrorText(value: string) {
     .trim();
 }
 
+async function resolveRemoteAsaasSubscription(
+  subscription: CancelableSubscriptionRecord
+) {
+  const providerSubscriptionId = subscription.providerSubscriptionId?.trim();
+
+  if (providerSubscriptionId) {
+    return {
+      id: providerSubscriptionId,
+      customer: subscription.providerCustomerId?.trim() || null,
+    };
+  }
+
+  const providerCheckoutId = subscription.providerCheckoutId?.trim();
+
+  if (!providerCheckoutId) {
+    return null;
+  }
+
+  return getAsaasClient().findActiveSubscriptionByCheckoutSession(providerCheckoutId);
+}
+
+async function recoverRemoteSubscriptionForEvent(input: {
+  agencySubscription: EventLookup;
+  checkoutId: string | null;
+  providerSubscriptionId: string | null;
+}) {
+  if (input.providerSubscriptionId?.trim()) {
+    return null;
+  }
+
+  const providerCheckoutId =
+    input.checkoutId?.trim() || input.agencySubscription.providerCheckoutId?.trim();
+
+  if (!providerCheckoutId) {
+    return null;
+  }
+
+  try {
+    return await getAsaasClient().findActiveSubscriptionByCheckoutSession(
+      providerCheckoutId
+    );
+  } catch (error) {
+    console.error(
+      "[ASAAS] Falha ao reconciliar assinatura pelo checkoutSession:",
+      error
+    );
+    return null;
+  }
+}
+
 async function findSubscriptionForEvent(filters: {
   checkoutId?: string | null;
   customerId?: string | null;
@@ -945,6 +1016,12 @@ const subscriptionSummarySelect = {
   activatedAt: true,
   canceledAt: true,
   providerSubscriptionId: true,
+} as const;
+
+const cancelableSubscriptionSelect = {
+  ...subscriptionSummarySelect,
+  providerCheckoutId: true,
+  providerCustomerId: true,
 } as const;
 
 function asRecord(value: unknown) {
