@@ -6,9 +6,9 @@ import {
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_ITINERARY_TIMEOUT_MS = 12_000;
 const DEFAULT_OPENAI_ITINERARY_MODEL = "gpt-5-mini";
-const OPENAI_MAX_OUTPUT_TOKENS = 520;
-const OPENAI_RETRY_MAX_OUTPUT_TOKENS = 720;
-const MAX_SAVED_ITINERARY_CHARS = 1_800;
+const OPENAI_MAX_OUTPUT_TOKENS = 760;
+const OPENAI_RETRY_MAX_OUTPUT_TOKENS = 980;
+const MAX_SAVED_ITINERARY_CHARS = 2_800;
 
 type VoucherFlightContext = {
   direction?: string | null;
@@ -147,12 +147,12 @@ export function buildVoucherItineraryPrompt(context: VoucherItineraryContext) {
     "",
     "Escreva um roteiro sugestao curto em portugues do Brasil para aparecer em um app de voucher.",
     "Regras obrigatorias:",
-    "- produza entre 90 e 170 palavras",
-    "- use texto simples com 1 titulo curto e 3 blocos curtos com subtitulos",
+    "- produza entre 160 e 280 palavras",
+    "- use texto simples com 1 titulo curto e 4 blocos curtos com subtitulos",
     "- mantenha tom acolhedor, claro e util",
     "- trate tudo como sugestao, nunca como confirmacao oficial",
     "- nao invente horarios exatos, precos, enderecos, contatos ou reservas",
-    "- inclua ideias realistas de chegada, experiencias e dicas praticas",
+    "- inclua ideias realistas de chegada, experiencias, organizacao dos dias e dicas praticas",
     "- encerre com uma frase curta orientando confirmar detalhes com a agencia",
     "Responda apenas com o texto final.",
   ];
