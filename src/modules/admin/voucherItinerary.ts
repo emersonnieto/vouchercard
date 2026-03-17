@@ -6,7 +6,8 @@ import {
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const OPENAI_ITINERARY_TIMEOUT_MS = 12_000;
 const DEFAULT_OPENAI_ITINERARY_MODEL = "gpt-5-mini";
-const OPENAI_MAX_OUTPUT_TOKENS = 320;
+const OPENAI_MAX_OUTPUT_TOKENS = 520;
+const OPENAI_RETRY_MAX_OUTPUT_TOKENS = 720;
 const MAX_SAVED_ITINERARY_CHARS = 1_800;
 
 type VoucherFlightContext = {
@@ -45,8 +46,12 @@ type ResponsesApiOutputItem = {
 
 type ResponsesApiPayload = {
   model?: string;
+  status?: string;
   output_text?: string;
   output?: ResponsesApiOutputItem[];
+  incomplete_details?: {
+    reason?: string;
+  } | null;
 };
 
 export type GeneratedVoucherItinerary = {
@@ -142,7 +147,7 @@ export function buildVoucherItineraryPrompt(context: VoucherItineraryContext) {
     "",
     "Escreva um roteiro sugestao curto em portugues do Brasil para aparecer em um app de voucher.",
     "Regras obrigatorias:",
-    "- produza entre 120 e 220 palavras",
+    "- produza entre 90 e 170 palavras",
     "- use texto simples com 1 titulo curto e 3 blocos curtos com subtitulos",
     "- mantenha tom acolhedor, claro e util",
     "- trate tudo como sugestao, nunca como confirmacao oficial",
@@ -204,17 +209,19 @@ function getOpenAiItineraryModel() {
   );
 }
 
-export async function generateVoucherItinerary(
-  context: VoucherItineraryContext
-): Promise<GeneratedVoucherItinerary | null> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  const tripDestination = asTrimmedString(context.tripDestination);
+function responseWasTruncated(payload: ResponsesApiPayload) {
+  return (
+    payload.status === "incomplete" &&
+    payload.incomplete_details?.reason === "max_output_tokens"
+  );
+}
 
-  if (!apiKey || !tripDestination) {
-    return null;
-  }
-
-  const model = getOpenAiItineraryModel();
+async function requestVoucherItinerary(
+  apiKey: string,
+  model: string,
+  context: VoucherItineraryContext,
+  maxOutputTokens: number
+) {
   const response = await fetchWithTimeout(
     OPENAI_RESPONSES_URL,
     {
@@ -227,13 +234,10 @@ export async function generateVoucherItinerary(
         model,
         store: false,
         reasoning: { effort: "low" },
-        max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+        max_output_tokens: maxOutputTokens,
         instructions:
           "Voce escreve roteiros de viagem curtos para vouchers. Responda sempre em portugues do Brasil.",
-        input: buildVoucherItineraryPrompt({
-          ...context,
-          tripDestination,
-        }),
+        input: buildVoucherItineraryPrompt(context),
       }),
     },
     {
@@ -247,7 +251,40 @@ export async function generateVoucherItinerary(
     throw new Error(`Falha ao gerar roteiro (${response.status}): ${details}`);
   }
 
-  const payload = (await response.json()) as ResponsesApiPayload;
+  return (await response.json()) as ResponsesApiPayload;
+}
+
+export async function generateVoucherItinerary(
+  context: VoucherItineraryContext
+): Promise<GeneratedVoucherItinerary | null> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const tripDestination = asTrimmedString(context.tripDestination);
+
+  if (!apiKey || !tripDestination) {
+    return null;
+  }
+
+  const model = getOpenAiItineraryModel();
+  const requestContext = {
+    ...context,
+    tripDestination,
+  };
+  let payload = await requestVoucherItinerary(
+    apiKey,
+    model,
+    requestContext,
+    OPENAI_MAX_OUTPUT_TOKENS
+  );
+
+  if (responseWasTruncated(payload)) {
+    payload = await requestVoucherItinerary(
+      apiKey,
+      model,
+      requestContext,
+      OPENAI_RETRY_MAX_OUTPUT_TOKENS
+    );
+  }
+
   const text = normalizeGeneratedItinerary(extractResponseOutputText(payload));
 
   if (!text) {

@@ -234,6 +234,15 @@ function buildVoucherItineraryContext(data: VoucherItineraryPayload) {
   };
 }
 
+function looksLikeTruncatedItinerary(value?: string | null) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return !/[.!?]$/.test(normalized);
+}
+
 function normalizeVoucherPayload(
   input: Omit<CreateVoucherInput, "agencyId">,
 ) {
@@ -1034,9 +1043,14 @@ export async function updateVoucher(
   const currentTripDestination = existing.tripDestination?.trim() || null;
   const tripDestinationChanged = currentTripDestination !== nextTripDestination;
   const shouldResetItinerary = !nextTripDestination || tripDestinationChanged;
+  const itineraryLooksIncomplete = looksLikeTruncatedItinerary(
+    existing.itinerarySuggestion
+  );
   const shouldGenerateItinerary =
     !!nextTripDestination &&
-    (tripDestinationChanged || !existing.itinerarySuggestion?.trim());
+    (tripDestinationChanged ||
+      !existing.itinerarySuggestion?.trim() ||
+      itineraryLooksIncomplete);
 
   try {
     await db.voucher.update({
