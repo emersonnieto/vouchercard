@@ -9,6 +9,7 @@ import {
 } from "../auth/userRoles";
 import { requireAuth, AuthedRequest } from "../middlewares/requireAuth";
 import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
+import { buildSubscriptionRenewalUrl } from "../modules/billing/renewal";
 
 export const authRouter = Router();
 
@@ -71,10 +72,26 @@ authRouter.post("/login", async (req, res) => {
       const agencyAccess = await ensureAgencySubscriptionAccess(agencyId);
 
       if (!agencyAccess.agencyFound || !agencyAccess.isActive) {
+        const isSubscriptionExpired = agencyAccess.expiredBySchedule;
+
         return res.status(403).json({
-          message: agencyAccess.expiredBySchedule
-            ? "Assinatura expirada. Contate o suporte."
+          message: isSubscriptionExpired
+            ? "Assinatura expirada. Renove para voltar a acessar o painel."
             : "Agencia inativa. Contate o suporte.",
+          code: isSubscriptionExpired
+            ? "SUBSCRIPTION_EXPIRED"
+            : "AGENCY_INACTIVE",
+          renewal: isSubscriptionExpired
+            ? {
+                url: buildSubscriptionRenewalUrl({
+                  email: user.email,
+                  planCode: agencyAccess.planCode,
+                }),
+                email: user.email,
+                planCode: agencyAccess.planCode,
+                expiresAt: agencyAccess.expiresAt,
+              }
+            : undefined,
         });
       }
     }

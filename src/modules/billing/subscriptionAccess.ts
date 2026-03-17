@@ -1,17 +1,20 @@
 import { SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { addMonths } from "./billing.utils";
+import type { SubscriptionPlanCode } from "./plans";
 
 export type AgencySubscriptionAccessState = {
   agencyFound: boolean;
   isActive: boolean;
   expiredBySchedule: boolean;
   expiresAt: Date | null;
+  planCode: SubscriptionPlanCode | null;
 };
 
 type ActiveSubscriptionSnapshot = {
   id: string;
   agencyId: string;
+  plan: SubscriptionPlanCode;
   activatedAt: Date | null;
   commitmentMonths: number;
   canceledAt: Date | null;
@@ -49,6 +52,7 @@ export async function ensureAgencySubscriptionAccess(
       isActive: false,
       expiredBySchedule: false,
       expiresAt: null,
+      planCode: null,
     };
   }
 
@@ -66,6 +70,7 @@ export async function ensureAgencySubscriptionAccess(
       select: {
         id: true,
         agencyId: true,
+        plan: true,
         activatedAt: true,
         commitmentMonths: true,
         canceledAt: true,
@@ -79,6 +84,7 @@ export async function ensureAgencySubscriptionAccess(
       isActive: false,
       expiredBySchedule: false,
       expiresAt: null,
+      planCode: null,
     };
   }
 
@@ -88,6 +94,7 @@ export async function ensureAgencySubscriptionAccess(
       isActive: agency.isActive,
       expiredBySchedule: false,
       expiresAt: null,
+      planCode: activeSubscription?.plan ?? null,
     };
   }
 
@@ -108,6 +115,7 @@ export async function ensureAgencySubscriptionAccess(
       isActive: agency.isActive,
       expiredBySchedule: false,
       expiresAt,
+      planCode: activeSubscription.plan,
     };
   }
 
@@ -118,6 +126,7 @@ export async function ensureAgencySubscriptionAccess(
     isActive: false,
     expiredBySchedule: true,
     expiresAt,
+    planCode: activeSubscription.plan,
   };
 }
 
@@ -137,6 +146,7 @@ export async function deactivateExpiredSubscriptions(
     select: {
       id: true,
       agencyId: true,
+      plan: true,
       activatedAt: true,
       commitmentMonths: true,
       canceledAt: true,
