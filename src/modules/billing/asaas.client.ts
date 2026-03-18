@@ -134,54 +134,60 @@ export class AsaasClient {
       throw new AsaasApiError("Codigo IBGE da cidade nao informado.", 400);
     }
 
-    const payload: AsaasCheckoutPayload = {
-      billingTypes: ["CREDIT_CARD"],
-      chargeTypes: ["RECURRENT"],
-      minutesToExpire: 60,
-      callback: {
-        successUrl: `${this.frontendAppUrl}/assinatura/sucesso?session=${input.sessionToken}`,
-        cancelUrl: `${this.frontendAppUrl}/assinatura/cancelado?session=${input.sessionToken}`,
-        expiredUrl: `${this.frontendAppUrl}/assinatura/expirado?session=${input.sessionToken}`,
-        autoRedirect: true,
-      },
-      items: [
-        {
-          name: `VoucherCard ${input.plan.name}`,
-          description: `Assinatura ${input.plan.name} do VoucherCard`,
-          quantity: 1,
-          value: input.plan.monthlyPrice,
-        },
-      ],
-      customerData: {
-        name: input.customerData.name,
-        email: input.customerData.email,
-        cpfCnpj: input.customerData.cpfCnpj || "",
-        phone: normalizedPhone,
-        city: input.customerData.city,
-        // Some valid CEPs are rejected by Asaas checkout validation, so we keep
-        // the rest of the address prefilled and avoid sending postalCode here.
-        address: input.customerData.address,
-        addressNumber: input.customerData.addressNumber,
-        complement: input.customerData.complement,
-        province: input.customerData.province,
-      },
-      subscription: {
-        cycle: input.plan.asaasCycle,
-        // The first charge needs to be due today so Asaas can capture it on signup.
-        nextDueDate: formatDateOnly(now),
-      },
+    const checkoutCustomerData: AsaasCustomerPayload & {
+      phone: string;
+      city: number;
+    } = {
+      ...input.customerData,
+      phone: normalizedPhone,
+      city: input.customerData.city,
     };
 
-    const checkout = await this.request<AsaasCheckoutResponse>("/checkouts", {
-      method: "POST",
-      body: JSON.stringify(payload),
+    const payload = buildRecurringCheckoutPayload({
+      plan: input.plan,
+      sessionToken: input.sessionToken,
+      frontendAppUrl: this.frontendAppUrl,
+      customerData: checkoutCustomerData,
+      includePostalCode: true,
+      now,
     });
 
-    return {
-      ...checkout,
-      url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
-      expiresAt: addMinutes(now, payload.minutesToExpire),
-    };
+    try {
+      const checkout = await this.request<AsaasCheckoutResponse>("/checkouts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      return {
+        ...checkout,
+        url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
+        expiresAt: addMinutes(now, payload.minutesToExpire),
+      };
+    } catch (error) {
+      if (!isAsaasPostalCodeValidationError(error)) {
+        throw error;
+      }
+
+      const fallbackPayload = buildRecurringCheckoutPayload({
+        plan: input.plan,
+        sessionToken: input.sessionToken,
+        frontendAppUrl: this.frontendAppUrl,
+        customerData: checkoutCustomerData,
+        includePostalCode: false,
+        now,
+      });
+
+      const checkout = await this.request<AsaasCheckoutResponse>("/checkouts", {
+        method: "POST",
+        body: JSON.stringify(fallbackPayload),
+      });
+
+      return {
+        ...checkout,
+        url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
+        expiresAt: addMinutes(now, fallbackPayload.minutesToExpire),
+      };
+    }
   }
 
   async cancelSubscription(subscriptionId: string) {
@@ -291,6 +297,54 @@ export class AsaasClient {
   }
 }
 
+function buildRecurringCheckoutPayload(input: {
+  plan: SubscriptionPlanDefinition;
+  sessionToken: string;
+  frontendAppUrl: string;
+  customerData: AsaasCustomerPayload & { phone: string; city: number };
+  includePostalCode: boolean;
+  now: Date;
+}): AsaasCheckoutPayload {
+  return {
+    billingTypes: ["CREDIT_CARD"],
+    chargeTypes: ["RECURRENT"],
+    minutesToExpire: 60,
+    callback: {
+      successUrl: `${input.frontendAppUrl}/assinatura/sucesso?session=${input.sessionToken}`,
+      cancelUrl: `${input.frontendAppUrl}/assinatura/cancelado?session=${input.sessionToken}`,
+      expiredUrl: `${input.frontendAppUrl}/assinatura/expirado?session=${input.sessionToken}`,
+      autoRedirect: true,
+    },
+    items: [
+      {
+        name: `VoucherCard ${input.plan.name}`,
+        description: `Assinatura ${input.plan.name} do VoucherCard`,
+        quantity: 1,
+        value: input.plan.monthlyPrice,
+      },
+    ],
+    customerData: {
+      name: input.customerData.name,
+      email: input.customerData.email,
+      cpfCnpj: input.customerData.cpfCnpj || "",
+      phone: input.customerData.phone,
+      city: input.customerData.city,
+      ...(input.includePostalCode
+        ? { postalCode: input.customerData.postalCode }
+        : {}),
+      address: input.customerData.address,
+      addressNumber: input.customerData.addressNumber,
+      complement: input.customerData.complement,
+      province: input.customerData.province,
+    },
+    subscription: {
+      cycle: input.plan.asaasCycle,
+      // The first charge needs to be due today so Asaas can capture it on signup.
+      nextDueDate: formatDateOnly(input.now),
+    },
+  };
+}
+
 function tryParseJson(value: string) {
   try {
     return JSON.parse(value);
@@ -307,6 +361,24 @@ function normalizeAsaasPhone(value: string | undefined) {
   }
 
   return null;
+}
+
+function isAsaasPostalCodeValidationError(error: unknown) {
+  if (!(error instanceof AsaasApiError)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return (
+    normalizedMessage.includes("postalcode") &&
+    (normalizedMessage.includes("invalido") ||
+      normalizedMessage.includes("invalid") ||
+      normalizedMessage.includes("cep"))
+  );
 }
 
 function resolveCheckoutUrl(
