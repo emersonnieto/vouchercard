@@ -17,6 +17,10 @@ import { reconcileSignupSessionCheckout } from "./checkoutReconciliation";
 import { getSubscriptionPlan, listSubscriptionPlans } from "./plans";
 import { lookupBrazilianPostalCode } from "./postalCodeLookup";
 import { verifyRenewalAccessToken } from "./renewal";
+import {
+  resolveSignupEmailPolicy,
+  SIGNUP_EMAIL_IN_USE_MESSAGE,
+} from "./signupEmailPolicy";
 import { getSubscriptionAccessEndsAt } from "./subscriptionAccess";
 
 export type SignupPayload = {
@@ -286,160 +290,166 @@ export async function createAgencySignup(payload: SignupPayload) {
     ? null
     : await bcrypt.hash(valid.password, 10);
 
-  const context = await prisma.$transaction(async (tx) => {
-    const existingUser = await tx.user.findUnique({
-      where: { email: valid.email },
-      select: {
-        id: true,
-        role: true,
-        agencyId: true,
-        agency: {
-          select: {
-            id: true,
-            isActive: true,
-            asaasCustomerId: true,
+  let context: SignupContext;
+
+  try {
+    context = await prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({
+        where: { email: valid.email },
+        select: {
+          id: true,
+          role: true,
+          agencyId: true,
+          agency: {
+            select: {
+              id: true,
+              isActive: true,
+              asaasCustomerId: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (existingUser?.role === "SUPERADMIN") {
-      throw new BillingValidationError(
-        "Este email esta reservado e nao pode ser usado no cadastro."
-      );
-    }
-
-    if (existingUser?.agency?.isActive) {
-      throw new BillingValidationError(
-        "Ja existe uma agencia ativa com este email."
-      );
-    }
-
-    if (renewalAccess) {
+      const emailPolicy = resolveSignupEmailPolicy(existingUser);
       if (
-        !existingUser?.agencyId ||
-        existingUser.id !== renewalAccess.userId ||
-        existingUser.agencyId !== renewalAccess.agencyId ||
-        valid.email !== normalizeEmail(renewalAccess.email)
+        emailPolicy.status === "reserved" ||
+        emailPolicy.status === "in_use"
       ) {
-        throw new BillingValidationError("Token de renovacao invalido.");
+        throw new BillingValidationError(emailPolicy.message);
       }
-    }
 
-    let agencyId = existingUser?.agency?.id ?? "";
-    const sessionToken = generatePublicToken();
-    if (existingUser?.agencyId) {
-      await tx.agency.update({
-        where: { id: existingUser.agencyId },
+      if (renewalAccess) {
+        if (
+          !existingUser?.agencyId ||
+          existingUser.id !== renewalAccess.userId ||
+          existingUser.agencyId !== renewalAccess.agencyId ||
+          valid.email !== normalizeEmail(renewalAccess.email)
+        ) {
+          throw new BillingValidationError("Token de renovacao invalido.");
+        }
+      }
+
+      let agencyId = existingUser?.agency?.id ?? "";
+      const sessionToken = generatePublicToken();
+      if (existingUser?.agencyId) {
+        await tx.agency.update({
+          where: { id: existingUser.agencyId },
+          data: {
+            name: valid.agencyName,
+            phone: valid.phone,
+            email: valid.email,
+            contactName: valid.contactName,
+            document: valid.cpfCnpj,
+            postalCode: normalizedAddress.postalCode,
+            street: normalizedAddress.address,
+            addressNumber: valid.addressNumber,
+            complement: valid.complement,
+            neighborhood: normalizedAddress.neighborhood,
+            city: normalizedAddress.city,
+            state: normalizedAddress.state,
+            website: valid.website,
+            isActive: false,
+          },
+        });
+
+        await tx.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: valid.contactName,
+            role: "ADMIN",
+            ...(passwordHash ? { passwordHash } : {}),
+          },
+        });
+      } else {
+        if (renewalAccess || !passwordHash) {
+          throw new BillingValidationError("Token de renovacao invalido.");
+        }
+
+        const slug = await generateUniqueAgencySlug(tx, valid.agencyName);
+        const agency = await tx.agency.create({
+          data: {
+            name: valid.agencyName,
+            slug,
+            phone: valid.phone,
+            email: valid.email,
+            contactName: valid.contactName,
+            document: valid.cpfCnpj,
+            postalCode: normalizedAddress.postalCode,
+            street: normalizedAddress.address,
+            addressNumber: valid.addressNumber,
+            complement: valid.complement,
+            neighborhood: normalizedAddress.neighborhood,
+            city: normalizedAddress.city,
+            state: normalizedAddress.state,
+            website: valid.website,
+            isActive: false,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        agencyId = agency.id;
+
+        await tx.user.create({
+          data: {
+            agencyId: agency.id,
+            name: valid.contactName,
+            email: valid.email,
+            passwordHash,
+            role: "ADMIN",
+          },
+        });
+      }
+
+      await tx.agencySubscription.updateMany({
+        where: {
+          agencyId,
+          status: {
+            in: [
+              SubscriptionStatus.PENDING,
+              SubscriptionStatus.CHECKOUT_CREATED,
+              SubscriptionStatus.CHECKOUT_EXPIRED,
+              SubscriptionStatus.PAST_DUE,
+            ],
+          },
+        },
         data: {
-          name: valid.agencyName,
-          phone: valid.phone,
-          email: valid.email,
-          contactName: valid.contactName,
-          document: valid.cpfCnpj,
-          postalCode: normalizedAddress.postalCode,
-          street: normalizedAddress.address,
-          addressNumber: valid.addressNumber,
-          complement: valid.complement,
-          neighborhood: normalizedAddress.neighborhood,
-          city: normalizedAddress.city,
-          state: normalizedAddress.state,
-          website: valid.website,
-          isActive: false,
+          status: SubscriptionStatus.CANCELED,
+          canceledAt: new Date(),
         },
       });
 
-      await tx.user.update({
-        where: { id: existingUser.id },
+      const subscription = await tx.agencySubscription.create({
         data: {
-          name: valid.contactName,
-          role: "ADMIN",
-          ...(passwordHash ? { passwordHash } : {}),
-        },
-      });
-    } else {
-      if (renewalAccess || !passwordHash) {
-        throw new BillingValidationError("Token de renovacao invalido.");
-      }
-
-      const slug = await generateUniqueAgencySlug(tx, valid.agencyName);
-      const agency = await tx.agency.create({
-        data: {
-          name: valid.agencyName,
-          slug,
-          phone: valid.phone,
-          email: valid.email,
-          contactName: valid.contactName,
-          document: valid.cpfCnpj,
-          postalCode: normalizedAddress.postalCode,
-          street: normalizedAddress.address,
-          addressNumber: valid.addressNumber,
-          complement: valid.complement,
-          neighborhood: normalizedAddress.neighborhood,
-          city: normalizedAddress.city,
-          state: normalizedAddress.state,
-          website: valid.website,
-          isActive: false,
+          agencyId,
+          publicToken: sessionToken,
+          plan: valid.plan.code,
+          status: SubscriptionStatus.PENDING,
+          billingCycleMonths: valid.plan.billingCycleMonths,
+          commitmentMonths: valid.plan.commitmentMonths,
+          price: new Prisma.Decimal(valid.plan.monthlyPrice),
+          currency: "BRL",
         },
         select: {
           id: true,
         },
       });
 
-      agencyId = agency.id;
-
-      await tx.user.create({
-        data: {
-          agencyId: agency.id,
-          name: valid.contactName,
-          email: valid.email,
-          passwordHash,
-          role: "ADMIN",
-        },
-      });
+      return {
+        agencyId,
+        subscriptionId: subscription.id,
+        sessionToken,
+        planCode: valid.plan.code,
+      } satisfies SignupContext;
+    });
+  } catch (error) {
+    if (isUserEmailUniqueConstraintError(error)) {
+      throw new BillingValidationError(SIGNUP_EMAIL_IN_USE_MESSAGE);
     }
 
-    await tx.agencySubscription.updateMany({
-      where: {
-        agencyId,
-        status: {
-          in: [
-            SubscriptionStatus.PENDING,
-            SubscriptionStatus.CHECKOUT_CREATED,
-            SubscriptionStatus.CHECKOUT_EXPIRED,
-            SubscriptionStatus.PAST_DUE,
-          ],
-        },
-      },
-      data: {
-        status: SubscriptionStatus.CANCELED,
-        canceledAt: new Date(),
-      },
-    });
-
-    const subscription = await tx.agencySubscription.create({
-      data: {
-        agencyId,
-        publicToken: sessionToken,
-        plan: valid.plan.code,
-        status: SubscriptionStatus.PENDING,
-        billingCycleMonths: valid.plan.billingCycleMonths,
-        commitmentMonths: valid.plan.commitmentMonths,
-        price: new Prisma.Decimal(valid.plan.monthlyPrice),
-        currency: "BRL",
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    return {
-      agencyId,
-      subscriptionId: subscription.id,
-      sessionToken,
-      planCode: valid.plan.code,
-    } satisfies SignupContext;
-  });
+    throw error;
+  }
 
   const plan = getSubscriptionPlan(context.planCode);
   if (!plan) {
@@ -934,6 +944,24 @@ function normalizeErrorText(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function isUserEmailUniqueConstraintError(error: unknown) {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002"
+  ) {
+    return false;
+  }
+
+  const target = error.meta?.target;
+  const entries = Array.isArray(target)
+    ? target
+    : target === undefined || target === null
+    ? []
+    : [target];
+
+  return entries.some((entry) => String(entry).toLowerCase().includes("email"));
 }
 
 async function resolveRemoteAsaasSubscription(
