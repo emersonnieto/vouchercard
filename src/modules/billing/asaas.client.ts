@@ -158,7 +158,8 @@ export class AsaasClient {
         cpfCnpj: input.customerData.cpfCnpj || "",
         phone: normalizedPhone,
         city: input.customerData.city,
-        postalCode: input.customerData.postalCode,
+        // Some valid CEPs are rejected by Asaas checkout validation, so we keep
+        // the rest of the address prefilled and avoid sending postalCode here.
         address: input.customerData.address,
         addressNumber: input.customerData.addressNumber,
         complement: input.customerData.complement,
