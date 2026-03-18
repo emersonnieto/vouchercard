@@ -5,6 +5,7 @@ const {
   isValidCpfCnpj,
   sanitizeDigits,
   slugifyAgencyName,
+  formatDateOnly,
   mapAsaasEventToStatus,
 } = require("../src/modules/billing/billing.utils");
 const { getSubscriptionPlan } = require("../src/modules/billing/plans");
@@ -29,6 +30,13 @@ test("slugifyAgencyName normalizes accents and symbols", () => {
   assert.equal(
     slugifyAgencyName("Agencia Sao Joao & Filhos"),
     "agencia-sao-joao-filhos"
+  );
+});
+
+test("formatDateOnly uses Sao Paulo local date for Asaas due dates", () => {
+  assert.equal(
+    formatDateOnly(new Date("2026-03-18T00:55:57.000Z")),
+    "2026-03-17"
   );
 });
 
