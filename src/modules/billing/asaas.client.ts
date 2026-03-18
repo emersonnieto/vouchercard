@@ -2,6 +2,7 @@ import { SubscriptionPlanDefinition } from "./plans";
 import {
   addMinutes,
   addMonths,
+  formatDateOnly,
   formatAsaasDateTime,
 } from "./billing.utils";
 import {
@@ -119,9 +120,8 @@ export class AsaasClient {
     customerData: AsaasCustomerPayload;
   }) {
     const now = new Date();
-    const firstDueDate = addMinutes(now, 10);
     const subscriptionEndDate = addMonths(
-      firstDueDate,
+      now,
       input.plan.commitmentMonths
     );
     const normalizedPhone = normalizeAsaasPhone(input.customerData.phone);
@@ -166,7 +166,8 @@ export class AsaasClient {
       },
       subscription: {
         cycle: input.plan.asaasCycle,
-        nextDueDate: formatAsaasDateTime(firstDueDate),
+        // The first charge needs to be due today so Asaas can capture it on signup.
+        nextDueDate: formatDateOnly(now),
         endDate: formatAsaasDateTime(subscriptionEndDate),
       },
     };
