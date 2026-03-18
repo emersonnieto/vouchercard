@@ -9,6 +9,7 @@ import {
 } from "../auth/userRoles";
 import { requireAuth, AuthedRequest } from "../middlewares/requireAuth";
 import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
+import { reconcileAgencyCheckoutAccess } from "../modules/billing/checkoutReconciliation";
 import {
   buildSubscriptionRenewalUrl,
   signRenewalAccessToken,
@@ -72,7 +73,14 @@ authRouter.post("/login", async (req, res) => {
         });
       }
 
-      const agencyAccess = await ensureAgencySubscriptionAccess(agencyId);
+      let agencyAccess = await ensureAgencySubscriptionAccess(agencyId);
+
+      if (agencyAccess.agencyFound && !agencyAccess.isActive) {
+        const reconciled = await reconcileAgencyCheckoutAccess(agencyId);
+        if (reconciled) {
+          agencyAccess = await ensureAgencySubscriptionAccess(agencyId);
+        }
+      }
 
       if (!agencyAccess.agencyFound || !agencyAccess.isActive) {
         const isSubscriptionExpired = agencyAccess.expiredBySchedule;

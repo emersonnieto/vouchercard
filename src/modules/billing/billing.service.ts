@@ -12,6 +12,7 @@ import {
   slugifyAgencyName,
 } from "./billing.utils";
 import { resolveIbgeCityCode } from "./cityCodeLookup";
+import { reconcileSignupSessionCheckout } from "./checkoutReconciliation";
 import { getSubscriptionPlan, listSubscriptionPlans } from "./plans";
 import { lookupBrazilianPostalCode } from "./postalCodeLookup";
 import { verifyRenewalAccessToken } from "./renewal";
@@ -512,8 +513,14 @@ export async function createAgencySignup(payload: SignupPayload) {
 }
 
 export async function getSignupSession(publicToken: string) {
-  const subscription = await prisma.agencySubscription.findUnique({
-    where: { publicToken },
+  const normalizedToken = String(publicToken ?? "").trim();
+
+  if (!normalizedToken) {
+    return null;
+  }
+
+  let subscription = await prisma.agencySubscription.findUnique({
+    where: { publicToken: normalizedToken },
     select: {
       publicToken: true,
       plan: true,
@@ -533,6 +540,38 @@ export async function getSignupSession(publicToken: string) {
       },
     },
   });
+
+  if (!subscription) {
+    return null;
+  }
+
+  if (subscription.status !== SubscriptionStatus.ACTIVE || !subscription.agency.isActive) {
+    const reconciled = await reconcileSignupSessionCheckout(normalizedToken);
+
+    if (reconciled) {
+      subscription = await prisma.agencySubscription.findUnique({
+        where: { publicToken: normalizedToken },
+        select: {
+          publicToken: true,
+          plan: true,
+          status: true,
+          checkoutUrl: true,
+          providerCheckoutId: true,
+          checkoutExpiresAt: true,
+          activatedAt: true,
+          createdAt: true,
+          agency: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              isActive: true,
+            },
+          },
+        },
+      });
+    }
+  }
 
   if (!subscription) {
     return null;
