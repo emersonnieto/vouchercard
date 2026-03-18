@@ -243,6 +243,24 @@ function looksLikeTruncatedItinerary(value?: string | null) {
   return !/[.!?]$/.test(normalized);
 }
 
+function looksLikeFlightFocusedItinerary(value?: string | null) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    /\baeroporto\b/i,
+    /\baeroportos\b/i,
+    /\bvoo\b/i,
+    /\bvoos\b/i,
+    /\bembarque\b/i,
+    /\bdesembarque\b/i,
+    /companhia aerea/i,
+    /companhia a\u00e9rea/i,
+  ].some((pattern) => pattern.test(normalized));
+}
+
 function normalizeVoucherPayload(
   input: Omit<CreateVoucherInput, "agencyId">,
 ) {
@@ -1046,11 +1064,15 @@ export async function updateVoucher(
   const itineraryLooksIncomplete = looksLikeTruncatedItinerary(
     existing.itinerarySuggestion
   );
+  const itineraryLooksFlightFocused = looksLikeFlightFocusedItinerary(
+    existing.itinerarySuggestion
+  );
   const shouldGenerateItinerary =
     !!nextTripDestination &&
     (tripDestinationChanged ||
       !existing.itinerarySuggestion?.trim() ||
-      itineraryLooksIncomplete);
+      itineraryLooksIncomplete ||
+      itineraryLooksFlightFocused);
 
   try {
     await db.voucher.update({
