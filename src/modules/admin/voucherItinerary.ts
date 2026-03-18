@@ -65,88 +65,16 @@ function asTrimmedString(value?: string | null) {
   return normalized || "";
 }
 
-function joinDistinct(values: Array<string | null | undefined>, limit = 4) {
-  const unique = new Set<string>();
-
-  for (const value of values) {
-    const normalized = asTrimmedString(value);
-    if (!normalized) continue;
-    unique.add(normalized);
-    if (unique.size >= limit) {
-      break;
-    }
-  }
-
-  return [...unique];
-}
-
-function buildFlightHighlights(flights: VoucherFlightContext[] = []) {
-  const outbound = flights.find((flight) => flight.direction === "OUTBOUND");
-  const inbound = flights.find((flight) => flight.direction === "RETURN");
-  const highlights: string[] = [];
-
-  if (outbound) {
-    const departure = asTrimmedString(outbound.embarkAirport);
-    const arrival = asTrimmedString(outbound.disembarkAirport);
-    const flightDate = asTrimmedString(outbound.flightDate);
-    const route = [departure, arrival].filter(Boolean).join(" -> ");
-    if (route || flightDate) {
-      highlights.push(
-        `Trecho de ida informado: ${[route, flightDate].filter(Boolean).join(" em ")}.`
-      );
-    }
-  }
-
-  if (inbound) {
-    const departure = asTrimmedString(inbound.embarkAirport);
-    const arrival = asTrimmedString(inbound.disembarkAirport);
-    const flightDate = asTrimmedString(inbound.flightDate);
-    const route = [departure, arrival].filter(Boolean).join(" -> ");
-    if (route || flightDate) {
-      highlights.push(
-        `Trecho de volta informado: ${[route, flightDate].filter(Boolean).join(" em ")}.`
-      );
-    }
-  }
-
-  return highlights;
-}
-
 export function buildVoucherItineraryPrompt(context: VoucherItineraryContext) {
   const destination = asTrimmedString(context.tripDestination);
-  const stayBase = joinDistinct(
-    [context.hotelName, context.hotelCity, context.hotelCountry],
-    3
-  );
-  const tourHighlights = joinDistinct(
-    (context.tours ?? []).map((tour) =>
-      [asTrimmedString(tour.location), asTrimmedString(tour.tourDate)]
-        .filter(Boolean)
-        .join(" em ")
-    )
-  );
-  const flightHighlights = buildFlightHighlights(context.flights ?? []);
-  const nights =
-    typeof context.nights === "number" && Number.isFinite(context.nights) && context.nights > 0
-      ? Math.trunc(context.nights)
-      : null;
   const lines = [
     `Destino principal: ${destination}.`,
-    nights ? `Duracao estimada da estadia: ${nights} noite${nights === 1 ? "" : "s"}.` : null,
-    stayBase.length ? `Base de hospedagem informada: ${stayBase.join(" | ")}.` : null,
-    tourHighlights.length
-      ? `Passeios ja cadastrados no voucher: ${tourHighlights.join(", ")}.`
-      : null,
-    ...flightHighlights,
-    asTrimmedString(context.transferReceptiveName)
-      ? `Receptivo informado: ${asTrimmedString(context.transferReceptiveName)}.`
-      : null,
-    asTrimmedString(context.additionalNotes)
-      ? `Observacoes adicionais do voucher: ${asTrimmedString(context.additionalNotes)}.`
-      : null,
     "",
     "Escreva um roteiro sugestao curto em portugues do Brasil para aparecer em um app de voucher.",
     "Regras obrigatorias:",
+    "- use somente o destino informado como base principal do roteiro",
+    "- ignore voos, hotel, transfer, seguro e detalhes operacionais do voucher",
+    "- nao mencione aeroportos, conexoes, embarque, origem do viajante ou companhias aereas",
     "- produza entre 160 e 280 palavras",
     "- use texto simples com 1 titulo curto e 4 blocos curtos com subtitulos",
     "- mantenha tom premium, acolhedor, elegante e confiavel",
@@ -154,7 +82,7 @@ export function buildVoucherItineraryPrompt(context: VoucherItineraryContext) {
     "- priorize frases fluidas, vocabulario levemente sofisticado e leitura facil no celular",
     "- trate tudo como sugestao, nunca como confirmacao oficial",
     "- nao invente horarios exatos, precos, enderecos, contatos ou reservas",
-    "- inclua ideias realistas de chegada, experiencias, organizacao dos dias e dicas praticas",
+    "- inclua ideias realistas para o primeiro contato com o destino, experiencias, organizacao dos dias e dicas praticas",
     "- destaque conforto, ritmo agradavel da viagem e pequenos toques de experiencia local",
     "- encerre com uma frase curta orientando confirmar detalhes com a agencia",
     "Responda apenas com o texto final.",

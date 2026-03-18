@@ -7,7 +7,7 @@ const {
   normalizeGeneratedItinerary,
 } = require("../src/modules/admin/voucherItinerary");
 
-test("buildVoucherItineraryPrompt includes destination and voucher context", () => {
+test("buildVoucherItineraryPrompt focuses only on destination guidance", () => {
   const prompt = buildVoucherItineraryPrompt({
     tripDestination: "Lisboa",
     hotelName: "Hotel Central",
@@ -26,10 +26,22 @@ test("buildVoucherItineraryPrompt includes destination and voucher context", () 
   });
 
   assert.match(prompt, /Destino principal: Lisboa\./);
-  assert.match(prompt, /Duracao estimada da estadia: 3 noites\./);
-  assert.match(prompt, /Base de hospedagem informada: Hotel Central \| Lisboa\./);
-  assert.match(prompt, /Passeios ja cadastrados no voucher: Belem em 2026-04-10\./);
-  assert.match(prompt, /Cliente gosta de roteiro leve\./);
+  assert.match(
+    prompt,
+    /use somente o destino informado como base principal do roteiro/
+  );
+  assert.match(
+    prompt,
+    /ignore voos, hotel, transfer, seguro e detalhes operacionais do voucher/
+  );
+  assert.match(
+    prompt,
+    /nao mencione aeroportos, conexoes, embarque, origem do viajante ou companhias aereas/
+  );
+  assert.doesNotMatch(prompt, /Hotel Central/);
+  assert.doesNotMatch(prompt, /3 noites/);
+  assert.doesNotMatch(prompt, /Belem em 2026-04-10/);
+  assert.doesNotMatch(prompt, /Cliente gosta de roteiro leve/);
 });
 
 test("extractResponseOutputText prefers output_text when available", () => {
