@@ -124,6 +124,50 @@ export function mapAsaasEventToStatus(event: string) {
   }
 }
 
+export function isPeriodEndCancellationEvent(eventName: string) {
+  return eventName === "PAYMENT_DELETED" || eventName === "SUBSCRIPTION_DELETED";
+}
+
+export function resolveAsaasSubscriptionState(input: {
+  currentStatus: SubscriptionStatus;
+  activatedAt: Date | null;
+  canceledAt: Date | null;
+  eventName: string;
+  incomingStatus: SubscriptionStatus;
+  activateAgency: boolean;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const hasActivatedAccess =
+    !!input.activatedAt || input.currentStatus === SubscriptionStatus.ACTIVE;
+  const shouldPreserveActiveAccess =
+    hasActivatedAccess &&
+    (input.incomingStatus === SubscriptionStatus.CHECKOUT_CREATED ||
+      input.incomingStatus === SubscriptionStatus.CHECKOUT_EXPIRED);
+  const shouldScheduleCancellation =
+    input.incomingStatus === SubscriptionStatus.CANCELED &&
+    isPeriodEndCancellationEvent(input.eventName) &&
+    !!input.activatedAt;
+
+  return {
+    nextStatus:
+      shouldScheduleCancellation || shouldPreserveActiveAccess
+        ? SubscriptionStatus.ACTIVE
+        : input.incomingStatus,
+    nextCanceledAt: shouldScheduleCancellation
+      ? input.canceledAt ?? now
+      : input.incomingStatus === SubscriptionStatus.CANCELED
+      ? now
+      : input.canceledAt,
+    nextAgencyActive:
+      shouldScheduleCancellation || shouldPreserveActiveAccess
+        ? true
+        : input.activateAgency,
+    shouldPreserveActiveAccess,
+    shouldScheduleCancellation,
+  };
+}
+
 function isValidCpf(value: string) {
   if (/^(\d)\1+$/.test(value)) return false;
 

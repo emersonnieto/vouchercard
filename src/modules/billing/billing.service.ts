@@ -8,6 +8,7 @@ import {
   mapAsaasEventToStatus,
   normalizeEmail,
   normalizePhone,
+  resolveAsaasSubscriptionState,
   sanitizeDigits,
   slugifyAgencyName,
 } from "./billing.utils";
@@ -715,21 +716,16 @@ export async function handleAsaasWebhookEvent(
     providerSubscriptionId ??
     recoveredRemoteSubscription?.id?.trim() ??
     agencySubscription.providerSubscriptionId;
-  const shouldScheduleCancellation =
-    statusDecision.status === SubscriptionStatus.CANCELED &&
-    isPeriodEndCancellationEvent(eventName) &&
-    !!agencySubscription.activatedAt;
+  const transition = resolveAsaasSubscriptionState({
+    currentStatus: agencySubscription.status,
+    activatedAt: agencySubscription.activatedAt,
+    canceledAt: agencySubscription.canceledAt,
+    eventName,
+    incomingStatus: statusDecision.status,
+    activateAgency: statusDecision.activateAgency,
+  });
 
   await prisma.$transaction(async (tx) => {
-    const nextStatus = shouldScheduleCancellation
-      ? SubscriptionStatus.ACTIVE
-      : statusDecision.status;
-    const nextCanceledAt = shouldScheduleCancellation
-      ? agencySubscription.canceledAt ?? new Date()
-      : statusDecision.status === SubscriptionStatus.CANCELED
-      ? new Date()
-      : agencySubscription.canceledAt;
-
     await tx.agencySubscription.update({
       where: { id: agencySubscription.id },
       data: {
@@ -737,14 +733,16 @@ export async function handleAsaasWebhookEvent(
         providerCustomerId: resolvedProviderCustomerId,
         providerSubscriptionId: resolvedProviderSubscriptionId,
         latestPaymentId: paymentId ?? agencySubscription.latestPaymentId,
-        status: nextStatus,
+        status: transition.nextStatus,
         checkoutExpiresAt:
-          checkoutExpiresAt ?? agencySubscription.checkoutExpiresAt ?? undefined,
+          transition.shouldPreserveActiveAccess
+            ? agencySubscription.checkoutExpiresAt ?? undefined
+            : checkoutExpiresAt ?? agencySubscription.checkoutExpiresAt ?? undefined,
         activatedAt:
-          nextStatus === SubscriptionStatus.ACTIVE
+          transition.nextStatus === SubscriptionStatus.ACTIVE
             ? agencySubscription.activatedAt ?? new Date()
             : agencySubscription.activatedAt,
-        canceledAt: nextCanceledAt,
+        canceledAt: transition.nextCanceledAt,
         lastEventAt: new Date(),
       },
     });
@@ -753,7 +751,7 @@ export async function handleAsaasWebhookEvent(
       where: { id: agencySubscription.agencyId },
       data: {
         asaasCustomerId: resolvedProviderCustomerId ?? undefined,
-        isActive: shouldScheduleCancellation ? true : statusDecision.activateAgency,
+        isActive: transition.nextAgencyActive,
       },
     });
   });
@@ -1105,10 +1103,6 @@ function mapAgencySubscriptionSummary(
     canCancel:
       subscription.status === SubscriptionStatus.ACTIVE && !subscription.canceledAt,
   };
-}
-
-function isPeriodEndCancellationEvent(eventName: string) {
-  return eventName === "PAYMENT_DELETED" || eventName === "SUBSCRIPTION_DELETED";
 }
 
 export class BillingValidationError extends Error {
