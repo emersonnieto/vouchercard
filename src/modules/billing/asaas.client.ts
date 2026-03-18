@@ -1,9 +1,7 @@
 import { SubscriptionPlanDefinition } from "./plans";
 import {
   addMinutes,
-  addMonths,
   formatDateOnly,
-  formatAsaasDateTime,
 } from "./billing.utils";
 import {
   ExternalRequestTimeoutError,
@@ -56,7 +54,6 @@ type AsaasCheckoutPayload = {
   subscription: {
     cycle: "MONTHLY";
     nextDueDate: string;
-    endDate: string;
   };
 };
 
@@ -127,10 +124,6 @@ export class AsaasClient {
     customerData: AsaasCustomerPayload;
   }) {
     const now = new Date();
-    const subscriptionEndDate = addMonths(
-      now,
-      input.plan.commitmentMonths
-    );
     const normalizedPhone = normalizeAsaasPhone(input.customerData.phone);
 
     if (!normalizedPhone) {
@@ -175,7 +168,6 @@ export class AsaasClient {
         cycle: input.plan.asaasCycle,
         // The first charge needs to be due today so Asaas can capture it on signup.
         nextDueDate: formatDateOnly(now),
-        endDate: formatAsaasDateTime(subscriptionEndDate),
       },
     };
 
