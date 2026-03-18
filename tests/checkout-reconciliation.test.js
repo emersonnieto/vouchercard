@@ -4,6 +4,7 @@ const { SubscriptionStatus } = require("@prisma/client");
 
 const {
   isCheckoutReconciliationEligible,
+  hasConfirmedSubscriptionPayment,
 } = require("../src/modules/billing/checkoutReconciliation");
 
 function buildCandidate(overrides = {}) {
@@ -74,4 +75,27 @@ test("isCheckoutReconciliationEligible requires Asaas checkout id", () => {
   );
 
   assert.equal(eligible, false);
+});
+
+test("hasConfirmedSubscriptionPayment only accepts settled payment statuses", () => {
+  assert.equal(
+    hasConfirmedSubscriptionPayment([
+      { status: "PENDING" },
+      { status: "AWAITING_RISK_ANALYSIS" },
+    ]),
+    false
+  );
+
+  assert.equal(
+    hasConfirmedSubscriptionPayment([
+      { status: "CONFIRMED" },
+      { status: "PENDING" },
+    ]),
+    true
+  );
+
+  assert.equal(
+    hasConfirmedSubscriptionPayment([{ status: "RECEIVED" }]),
+    true
+  );
 });

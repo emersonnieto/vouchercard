@@ -41,6 +41,7 @@ test("getSubscriptionPlan resolves supported plans", () => {
 
 test("mapAsaasEventToStatus activates only successful payment events", () => {
   assert.equal(mapAsaasEventToStatus("PAYMENT_CONFIRMED").activateAgency, true);
+  assert.equal(mapAsaasEventToStatus("PAYMENT_AUTHORIZED").activateAgency, false);
   assert.equal(mapAsaasEventToStatus("PAYMENT_OVERDUE").activateAgency, false);
   assert.equal(mapAsaasEventToStatus("UNKNOWN_EVENT"), null);
 });

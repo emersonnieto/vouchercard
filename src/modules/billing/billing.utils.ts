@@ -90,10 +90,14 @@ export function mapAsaasEventToStatus(event: string) {
     case "CHECKOUT_PAID":
     case "PAYMENT_RECEIVED":
     case "PAYMENT_CONFIRMED":
-    case "PAYMENT_AUTHORIZED":
       return {
         status: SubscriptionStatus.ACTIVE,
         activateAgency: true,
+      };
+    case "PAYMENT_AUTHORIZED":
+      return {
+        status: SubscriptionStatus.CHECKOUT_CREATED,
+        activateAgency: false,
       };
     case "PAYMENT_OVERDUE":
       return {

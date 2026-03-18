@@ -24,7 +24,7 @@ type CheckoutReconciliationCandidate = {
 
 type CheckoutLookupClient = Pick<
   AsaasClient,
-  "findActiveSubscriptionByCheckoutSession"
+  "findActiveSubscriptionByCheckoutSession" | "listSubscriptionPayments"
 >;
 
 const checkoutReconciliationSelect = {
@@ -76,6 +76,15 @@ export function isCheckoutReconciliationEligible(
   }
 
   return true;
+}
+
+export function hasConfirmedSubscriptionPayment(
+  payments: Array<{ status?: string | null }>
+) {
+  return payments.some((payment) => {
+    const status = String(payment.status ?? "").trim().toUpperCase();
+    return status === "CONFIRMED" || status === "RECEIVED";
+  });
 }
 
 export async function reconcileSignupSessionCheckout(
@@ -141,6 +150,13 @@ async function reconcileSubscriptionCheckout(
 
     const remoteSubscriptionId = remoteSubscription?.id?.trim();
     if (!remoteSubscriptionId) {
+      return false;
+    }
+
+    const remotePayments =
+      await checkoutClient.listSubscriptionPayments(remoteSubscriptionId);
+
+    if (!hasConfirmedSubscriptionPayment(remotePayments)) {
       return false;
     }
 

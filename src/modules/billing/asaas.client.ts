@@ -82,6 +82,13 @@ export type AsaasSubscriptionRecord = {
   checkoutSession?: string | null;
 };
 
+export type AsaasPaymentRecord = {
+  id: string;
+  status?: string | null;
+  dueDate?: string | null;
+  dateCreated?: string | null;
+};
+
 type AsaasErrorPayload = {
   errors?: Array<{ code?: string; description?: string }>;
 };
@@ -232,6 +239,21 @@ export class AsaasClient {
     }
 
     return null;
+  }
+
+  async listSubscriptionPayments(subscriptionId: string) {
+    const normalizedSubscriptionId = String(subscriptionId ?? "").trim();
+
+    if (!normalizedSubscriptionId) {
+      throw new AsaasApiError("Assinatura do Asaas nao informada.", 400);
+    }
+
+    const response = await this.request<AsaasListResponse<AsaasPaymentRecord>>(
+      `/subscriptions/${normalizedSubscriptionId}/payments?limit=20&offset=0`,
+      { method: "GET" }
+    );
+
+    return Array.isArray(response.data) ? response.data : [];
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
