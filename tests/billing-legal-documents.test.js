@@ -12,10 +12,9 @@ test("getCurrentBillingLegalDocuments returns the current signup bundle", () => 
   assert.equal(bundle.kind, "signup");
   assert.equal(typeof bundle.statement, "string");
   assert.ok(bundle.statement.includes("inicio da assinatura recorrente"));
-  assert.equal(bundle.terms.version, "2026-03-26");
-  assert.equal(bundle.privacyPolicy.version, "2026-03-26");
-  assert.equal(bundle.terms.hash.length, 64);
-  assert.equal(bundle.privacyPolicy.hash.length, 64);
+  assert.equal(bundle.document.version, "2026-03-26");
+  assert.equal(bundle.document.publicUrl, "https://termosdeuso.vouchercard.com.br/");
+  assert.equal(bundle.document.hash.length, 64);
   assert.equal(bundle.bundleHash.length, 64);
 });
 
@@ -24,10 +23,8 @@ test("isBillingLegalAcceptanceValid accepts the exact current bundle", () => {
 
   const valid = isBillingLegalAcceptanceValid("signup", {
     statement: bundle.statement,
-    termsVersion: bundle.terms.version,
-    termsHash: bundle.terms.hash,
-    privacyVersion: bundle.privacyPolicy.version,
-    privacyHash: bundle.privacyPolicy.hash,
+    documentVersion: bundle.document.version,
+    documentHash: bundle.document.hash,
     bundleHash: bundle.bundleHash,
   });
 
@@ -39,10 +36,8 @@ test("isBillingLegalAcceptanceValid rejects tampered data", () => {
 
   const valid = isBillingLegalAcceptanceValid("signup", {
     statement: bundle.statement,
-    termsVersion: bundle.terms.version,
-    termsHash: `${bundle.terms.hash.slice(0, -1)}0`,
-    privacyVersion: bundle.privacyPolicy.version,
-    privacyHash: bundle.privacyPolicy.hash,
+    documentVersion: bundle.document.version,
+    documentHash: `${bundle.document.hash.slice(0, -1)}0`,
     bundleHash: bundle.bundleHash,
   });
 
