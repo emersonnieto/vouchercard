@@ -21,6 +21,12 @@ import {
   resolveSignupEmailPolicy,
   SIGNUP_EMAIL_IN_USE_MESSAGE,
 } from "./signupEmailPolicy";
+import {
+  type BillingLegalAcceptanceKind,
+  type SubmittedBillingLegalAcceptance,
+  getCurrentBillingLegalDocuments,
+  isBillingLegalAcceptanceValid,
+} from "./legalDocuments";
 import { getSubscriptionAccessEndsAt } from "./subscriptionAccess";
 
 export type SignupPayload = {
@@ -41,6 +47,16 @@ export type SignupPayload = {
   state?: string;
   website?: string;
   termsAccepted?: boolean;
+  termsAcceptance?: SubmittedBillingLegalAcceptance;
+};
+
+export type SignupRequestMeta = {
+  ipAddress?: string;
+  userAgent?: string;
+  acceptLanguage?: string;
+  requestPath?: string;
+  origin?: string;
+  referer?: string;
 };
 
 export type RenewalPrefillResponse = {
@@ -64,6 +80,8 @@ type SignupContext = {
   subscriptionId: string;
   sessionToken: string;
   planCode: "MONTHLY" | "SEMIANNUAL" | "ANNUAL";
+  acceptanceKind: "signup" | "renewal";
+  acceptedLegalBundle: ReturnType<typeof getCurrentBillingLegalDocuments>;
 };
 
 type EventLookup = {
@@ -280,10 +298,17 @@ export async function getRenewalPrefill(token: string) {
   } satisfies RenewalPrefillResponse;
 }
 
-export async function createAgencySignup(payload: SignupPayload) {
+export async function createAgencySignup(
+  payload: SignupPayload,
+  requestMeta: SignupRequestMeta = {}
+) {
   const renewalAccess = resolveSignupRenewalAccess(payload.renewalToken);
+  const acceptanceKind: BillingLegalAcceptanceKind = renewalAccess
+    ? "renewal"
+    : "signup";
   const valid = validateSignupPayload(payload, {
     requirePassword: !renewalAccess,
+    acceptanceKind,
   });
   const normalizedAddress = await normalizeSignupAddress(valid);
   const passwordHash = renewalAccess
@@ -436,11 +461,40 @@ export async function createAgencySignup(payload: SignupPayload) {
         },
       });
 
+      await tx.billingLegalAcceptance.create({
+        data: {
+          kind: acceptanceKind.toUpperCase(),
+          email: valid.email,
+          agencyId,
+          subscriptionId: subscription.id,
+          publicToken: sessionToken,
+          statementText: valid.acceptedLegalBundle.statement,
+          statementHash: valid.acceptedLegalBundle.statementHash,
+          termsTitle: valid.acceptedLegalBundle.terms.title,
+          termsVersion: valid.acceptedLegalBundle.terms.version,
+          termsHash: valid.acceptedLegalBundle.terms.hash,
+          termsText: valid.acceptedLegalBundle.terms.body,
+          privacyTitle: valid.acceptedLegalBundle.privacyPolicy.title,
+          privacyVersion: valid.acceptedLegalBundle.privacyPolicy.version,
+          privacyHash: valid.acceptedLegalBundle.privacyPolicy.hash,
+          privacyText: valid.acceptedLegalBundle.privacyPolicy.body,
+          bundleHash: valid.acceptedLegalBundle.bundleHash,
+          ipAddress: requestMeta.ipAddress,
+          userAgent: requestMeta.userAgent,
+          acceptLanguage: requestMeta.acceptLanguage,
+          requestPath: requestMeta.requestPath,
+          origin: requestMeta.origin,
+          referer: requestMeta.referer,
+        },
+      });
+
       return {
         agencyId,
         subscriptionId: subscription.id,
         sessionToken,
         planCode: valid.plan.code,
+        acceptanceKind,
+        acceptedLegalBundle: valid.acceptedLegalBundle,
       } satisfies SignupContext;
     });
   } catch (error) {
@@ -795,7 +849,10 @@ async function generateUniqueAgencySlug(
 
 function validateSignupPayload(
   payload: SignupPayload,
-  options: { requirePassword?: boolean } = {}
+  options: {
+    requirePassword?: boolean;
+    acceptanceKind?: BillingLegalAcceptanceKind;
+  } = {}
 ) {
   const plan = getSubscriptionPlan(payload.planCode);
   if (!plan) {
@@ -818,6 +875,7 @@ function validateSignupPayload(
   const website = String(payload.website ?? "").trim();
   const termsAccepted = payload.termsAccepted === true;
   const requirePassword = options.requirePassword !== false;
+  const acceptanceKind = options.acceptanceKind ?? "signup";
 
   if (agencyName.length < 2) {
     throw new BillingValidationError("Informe o nome da agencia.");
@@ -879,6 +937,12 @@ function validateSignupPayload(
     );
   }
 
+  if (!isBillingLegalAcceptanceValid(acceptanceKind, payload.termsAcceptance)) {
+    throw new BillingValidationError(
+      "Os termos foram atualizados ou o aceite nao foi confirmado corretamente. Revise o documento e aceite novamente."
+    );
+  }
+
   return {
     plan,
     agencyName,
@@ -895,6 +959,7 @@ function validateSignupPayload(
     city,
     state,
     website,
+    acceptedLegalBundle: getCurrentBillingLegalDocuments(acceptanceKind),
   };
 }
 

@@ -199,6 +199,39 @@ model BillingWebhookEvent {
   @@index([provider, event])
 }
 
+model BillingLegalAcceptance {
+  id             String   @id @default(uuid())
+  kind           String
+  email          String
+  agencyId       String?
+  subscriptionId String?
+  publicToken    String?
+  statementText  String
+  statementHash  String
+  termsTitle     String
+  termsVersion   String
+  termsHash      String
+  termsText      String
+  privacyTitle   String
+  privacyVersion String
+  privacyHash    String
+  privacyText    String
+  bundleHash     String
+  acceptedAt     DateTime @default(now())
+  ipAddress      String?
+  userAgent      String?
+  acceptLanguage String?
+  requestPath    String?
+  origin         String?
+  referer        String?
+
+  @@index([email, acceptedAt])
+  @@index([agencyId, acceptedAt])
+  @@index([subscriptionId])
+  @@index([publicToken])
+  @@index([kind, acceptedAt])
+}
+
 model AppRateLimit {
   key       String   @id
   count     Int

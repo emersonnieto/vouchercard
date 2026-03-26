@@ -7,6 +7,7 @@ import {
   getRenewalPrefill,
   getSignupSession,
 } from "../modules/billing/billing.service";
+import { getCurrentBillingLegalDocuments } from "../modules/billing/legalDocuments";
 
 export const billingRouter = Router();
 
@@ -16,9 +17,23 @@ billingRouter.get("/plans", (_req, res) => {
   });
 });
 
+billingRouter.get("/legal-documents", (req, res) => {
+  const kind = req.query.kind === "renewal" ? "renewal" : "signup";
+  return res.json(getCurrentBillingLegalDocuments(kind));
+});
+
 billingRouter.post("/signup", async (req, res) => {
   try {
-    const result = await createAgencySignup(req.body ?? {});
+    const forwardedForHeader = req.header("x-forwarded-for") ?? "";
+    const ipAddress = forwardedForHeader.split(",")[0]?.trim() || req.ip || "";
+    const result = await createAgencySignup(req.body ?? {}, {
+      ipAddress,
+      userAgent: req.header("user-agent") ?? undefined,
+      acceptLanguage: req.header("accept-language") ?? undefined,
+      requestPath: req.originalUrl,
+      origin: req.header("origin") ?? undefined,
+      referer: req.header("referer") ?? undefined,
+    });
     return res.status(201).json(result);
   } catch (error) {
     if (error instanceof BillingValidationError) {
