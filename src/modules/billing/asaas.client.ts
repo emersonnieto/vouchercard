@@ -148,7 +148,6 @@ export class AsaasClient {
       sessionToken: input.sessionToken,
       frontendAppUrl: this.frontendAppUrl,
       customerData: checkoutCustomerData,
-      includePostalCode: true,
       now,
     });
 
@@ -172,8 +171,6 @@ export class AsaasClient {
         plan: input.plan,
         sessionToken: input.sessionToken,
         frontendAppUrl: this.frontendAppUrl,
-        customerData: checkoutCustomerData,
-        includePostalCode: false,
         now,
       });
 
@@ -313,8 +310,7 @@ function buildRecurringCheckoutPayload(input: {
   plan: SubscriptionPlanDefinition;
   sessionToken: string;
   frontendAppUrl: string;
-  customerData: AsaasCustomerPayload & { phone: string; city: number };
-  includePostalCode: boolean;
+  customerData?: AsaasCustomerPayload & { phone: string; city: number };
   now: Date;
 }): AsaasCheckoutPayload {
   return {
@@ -335,20 +331,22 @@ function buildRecurringCheckoutPayload(input: {
         value: input.plan.monthlyPrice,
       },
     ],
-    customerData: {
-      name: input.customerData.name,
-      email: input.customerData.email,
-      cpfCnpj: input.customerData.cpfCnpj || "",
-      phone: input.customerData.phone,
-      city: input.customerData.city,
-      ...(input.includePostalCode
-        ? { postalCode: input.customerData.postalCode }
-        : {}),
-      address: input.customerData.address,
-      addressNumber: input.customerData.addressNumber,
-      complement: input.customerData.complement,
-      province: input.customerData.province,
-    },
+    ...(input.customerData
+      ? {
+          customerData: {
+            name: input.customerData.name,
+            email: input.customerData.email,
+            cpfCnpj: input.customerData.cpfCnpj || "",
+            phone: input.customerData.phone,
+            city: input.customerData.city,
+            postalCode: input.customerData.postalCode,
+            address: input.customerData.address,
+            addressNumber: input.customerData.addressNumber,
+            complement: input.customerData.complement,
+            province: input.customerData.province,
+          },
+        }
+      : {}),
     subscription: {
       cycle: input.plan.asaasCycle,
       // The first charge needs to be due today so Asaas can capture it on signup.

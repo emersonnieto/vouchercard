@@ -461,34 +461,6 @@ export async function createAgencySignup(
         },
       });
 
-      await tx.billingLegalAcceptance.create({
-        data: {
-          kind: acceptanceKind.toUpperCase(),
-          email: valid.email,
-          agencyId,
-          subscriptionId: subscription.id,
-          publicToken: sessionToken,
-          statementText: valid.acceptedLegalBundle.statement,
-          statementHash: valid.acceptedLegalBundle.statementHash,
-          termsTitle: valid.acceptedLegalBundle.document.title,
-          termsVersion: valid.acceptedLegalBundle.document.version,
-          termsHash: valid.acceptedLegalBundle.document.hash,
-          termsText: valid.acceptedLegalBundle.document.body,
-          // Kept duplicated for backward compatibility with the current table shape.
-          privacyTitle: valid.acceptedLegalBundle.document.title,
-          privacyVersion: valid.acceptedLegalBundle.document.version,
-          privacyHash: valid.acceptedLegalBundle.document.hash,
-          privacyText: valid.acceptedLegalBundle.document.body,
-          bundleHash: valid.acceptedLegalBundle.bundleHash,
-          ipAddress: requestMeta.ipAddress,
-          userAgent: requestMeta.userAgent,
-          acceptLanguage: requestMeta.acceptLanguage,
-          requestPath: requestMeta.requestPath,
-          origin: requestMeta.origin,
-          referer: requestMeta.referer,
-        },
-      });
-
       return {
         agencyId,
         subscriptionId: subscription.id,
@@ -540,14 +512,44 @@ export async function createAgencySignup(
       },
     });
 
-    await prisma.agencySubscription.update({
-      where: { id: context.subscriptionId },
-      data: {
-        providerCheckoutId: checkout.id,
-        checkoutUrl: checkout.url,
-        checkoutExpiresAt: checkout.expiresAt,
-        status: SubscriptionStatus.CHECKOUT_CREATED,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.agencySubscription.update({
+        where: { id: context.subscriptionId },
+        data: {
+          providerCheckoutId: checkout.id,
+          checkoutUrl: checkout.url,
+          checkoutExpiresAt: checkout.expiresAt,
+          status: SubscriptionStatus.CHECKOUT_CREATED,
+        },
+      });
+
+      await tx.billingLegalAcceptance.create({
+        data: {
+          kind: context.acceptanceKind.toUpperCase(),
+          email: valid.email,
+          agencyId: context.agencyId,
+          subscriptionId: context.subscriptionId,
+          publicToken: context.sessionToken,
+          statementText: context.acceptedLegalBundle.statement,
+          statementHash: context.acceptedLegalBundle.statementHash,
+          termsTitle: context.acceptedLegalBundle.document.title,
+          termsVersion: context.acceptedLegalBundle.document.version,
+          termsHash: context.acceptedLegalBundle.document.hash,
+          termsText: context.acceptedLegalBundle.document.body,
+          // Kept duplicated for backward compatibility with the current table shape.
+          privacyTitle: context.acceptedLegalBundle.document.title,
+          privacyVersion: context.acceptedLegalBundle.document.version,
+          privacyHash: context.acceptedLegalBundle.document.hash,
+          privacyText: context.acceptedLegalBundle.document.body,
+          bundleHash: context.acceptedLegalBundle.bundleHash,
+          ipAddress: requestMeta.ipAddress,
+          userAgent: requestMeta.userAgent,
+          acceptLanguage: requestMeta.acceptLanguage,
+          requestPath: requestMeta.requestPath,
+          origin: requestMeta.origin,
+          referer: requestMeta.referer,
+        },
+      });
     });
 
     return {
