@@ -151,40 +151,16 @@ export class AsaasClient {
       now,
     });
 
-    try {
-      const checkout = await this.request<AsaasCheckoutResponse>("/checkouts", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+    const checkout = await this.request<AsaasCheckoutResponse>("/checkouts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
 
-      return {
-        ...checkout,
-        url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
-        expiresAt: addMinutes(now, payload.minutesToExpire),
-      };
-    } catch (error) {
-      if (!isAsaasPostalCodeValidationError(error)) {
-        throw error;
-      }
-
-      const fallbackPayload = buildRecurringCheckoutPayload({
-        plan: input.plan,
-        sessionToken: input.sessionToken,
-        frontendAppUrl: this.frontendAppUrl,
-        now,
-      });
-
-      const checkout = await this.request<AsaasCheckoutResponse>("/checkouts", {
-        method: "POST",
-        body: JSON.stringify(fallbackPayload),
-      });
-
-      return {
-        ...checkout,
-        url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
-        expiresAt: addMinutes(now, fallbackPayload.minutesToExpire),
-      };
-    }
+    return {
+      ...checkout,
+      url: resolveCheckoutUrl(checkout, this.checkoutBaseUrl),
+      expiresAt: addMinutes(now, payload.minutesToExpire),
+    };
   }
 
   validateRecurringCheckoutCustomerData(customerData: AsaasCustomerPayload) {
@@ -371,24 +347,6 @@ function normalizeAsaasPhone(value: string | undefined) {
   }
 
   return null;
-}
-
-function isAsaasPostalCodeValidationError(error: unknown) {
-  if (!(error instanceof AsaasApiError)) {
-    return false;
-  }
-
-  const normalizedMessage = error.message
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-  return (
-    normalizedMessage.includes("postalcode") &&
-    (normalizedMessage.includes("invalido") ||
-      normalizedMessage.includes("invalid") ||
-      normalizedMessage.includes("cep"))
-  );
 }
 
 function resolveCheckoutUrl(

@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { AsaasClient } = require("../src/modules/billing/asaas.client");
 const { getSubscriptionPlan } = require("../src/modules/billing/plans");
 
-test("createRecurringCheckout retries without customerData when Asaas rejects the postal code", async () => {
+test("createRecurringCheckout surfaces the Asaas postal code error without fallback", async () => {
   const originalFetch = global.fetch;
   const originalEnv = {
     ASAAS_API_URL: process.env.ASAAS_API_URL,
@@ -23,25 +23,12 @@ test("createRecurringCheckout retries without customerData when Asaas rejects th
   global.fetch = async (_input, init) => {
     requestBodies.push(JSON.parse(String(init?.body ?? "{}")));
 
-    if (requestBodies.length === 1) {
-      return new Response(
-        JSON.stringify({
-          errors: [{ description: "O campo postalCode e invalido." }],
-        }),
-        {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }
-      );
-    }
-
     return new Response(
       JSON.stringify({
-        id: "chk_123",
-        link: "https://sandbox.asaas.com/checkout/chk_123",
+        errors: [{ description: "O campo postalCode e invalido." }],
       }),
       {
-        status: 200,
+        status: 400,
         headers: { "content-type": "application/json" },
       }
     );
@@ -51,28 +38,32 @@ test("createRecurringCheckout retries without customerData when Asaas rejects th
     const client = new AsaasClient();
     const plan = getSubscriptionPlan("MONTHLY");
 
-    const checkout = await client.createRecurringCheckout({
-      plan,
-      sessionToken: "session_123",
-      customerData: {
-        name: "Agencia Teste",
-        email: "teste@example.com",
-        phone: "14999999999",
-        cpfCnpj: "41811517862",
-        postalCode: "17280003",
-        address: "Rua Coronel Coimbra",
-        addressNumber: "66",
-        complement: "",
-        province: "Centro",
-        city: 3536704,
-      },
-    });
+    await assert.rejects(
+      () =>
+        client.createRecurringCheckout({
+          plan,
+          sessionToken: "session_123",
+          customerData: {
+            name: "Agencia Teste",
+            email: "teste@example.com",
+            phone: "14999999999",
+            cpfCnpj: "41811517862",
+            postalCode: "17280003",
+            address: "Rua Coronel Coimbra",
+            addressNumber: "66",
+            complement: "",
+            province: "Centro",
+            city: 3536704,
+          },
+        }),
+      (error) => {
+        assert.equal(error.message, "O campo postalCode e invalido.");
+        return true;
+      }
+    );
 
-    assert.equal(requestBodies.length, 2);
+    assert.equal(requestBodies.length, 1);
     assert.equal(requestBodies[0].customerData.postalCode, "17280003");
-    assert.equal("customerData" in requestBodies[1], false);
-    assert.equal(checkout.id, "chk_123");
-    assert.equal(checkout.url, "https://sandbox.asaas.com/checkout/chk_123");
   } finally {
     global.fetch = originalFetch;
 
