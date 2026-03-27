@@ -190,6 +190,18 @@ export class AsaasClient {
     }
   }
 
+  validateRecurringCheckoutCustomerData(customerData: AsaasCustomerPayload) {
+    const normalizedPhone = normalizeAsaasPhone(customerData.phone);
+
+    if (!normalizedPhone) {
+      throw new AsaasApiError("Telefone invalido para o checkout.", 400);
+    }
+
+    if (!customerData.city) {
+      throw new AsaasApiError("Codigo IBGE da cidade nao informado.", 400);
+    }
+  }
+
   async cancelSubscription(subscriptionId: string) {
     const normalizedSubscriptionId = String(subscriptionId ?? "").trim();
 

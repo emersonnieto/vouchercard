@@ -6,6 +6,7 @@ import {
   getPublicPlans,
   getRenewalPrefill,
   getSignupSession,
+  prevalidateAgencySignup,
 } from "../modules/billing/billing.service";
 import { getCurrentBillingLegalDocuments } from "../modules/billing/legalDocuments";
 
@@ -46,6 +47,24 @@ billingRouter.post("/signup", async (req, res) => {
 
     console.error("[BILLING] signup failed:", error);
     return res.status(500).json({ message: "Erro interno no cadastro." });
+  }
+});
+
+billingRouter.post("/validate-signup", async (req, res) => {
+  try {
+    const result = await prevalidateAgencySignup(req.body ?? {});
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof BillingValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    if (error instanceof BillingIntegrationError) {
+      return res.status(502).json({ message: error.message });
+    }
+
+    console.error("[BILLING] signup prevalidation failed:", error);
+    return res.status(500).json({ message: "Erro interno na validacao do cadastro." });
   }
 });
 

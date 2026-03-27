@@ -578,6 +578,47 @@ export async function createAgencySignup(
   }
 }
 
+export async function prevalidateAgencySignup(payload: SignupPayload) {
+  const renewalAccess = resolveSignupRenewalAccess(payload.renewalToken);
+  const acceptanceKind: BillingLegalAcceptanceKind = renewalAccess
+    ? "renewal"
+    : "signup";
+  const valid = validateSignupPayload(payload, {
+    requirePassword: !renewalAccess,
+    acceptanceKind,
+    requireTermsAccepted: false,
+  });
+  const normalizedAddress = await normalizeSignupAddress(valid);
+
+  const cityCode = await resolveIbgeCityCode({
+    city: normalizedAddress.city,
+    state: normalizedAddress.state,
+  });
+
+  if (!cityCode) {
+    throw new BillingValidationError(
+      "Nao foi possivel identificar a cidade da agencia. Revise cidade e UF."
+    );
+  }
+
+  getAsaasClient().validateRecurringCheckoutCustomerData({
+    name: valid.contactName,
+    email: valid.email,
+    phone: valid.phone,
+    cpfCnpj: valid.cpfCnpj,
+    postalCode: normalizedAddress.postalCode,
+    address: normalizedAddress.address,
+    addressNumber: valid.addressNumber,
+    complement: valid.complement,
+    province: normalizedAddress.neighborhood,
+    city: cityCode,
+  });
+
+  return {
+    ok: true as const,
+  };
+}
+
 export async function getSignupSession(publicToken: string) {
   const normalizedToken = String(publicToken ?? "").trim();
 
@@ -853,6 +894,7 @@ function validateSignupPayload(
   options: {
     requirePassword?: boolean;
     acceptanceKind?: BillingLegalAcceptanceKind;
+    requireTermsAccepted?: boolean;
   } = {}
 ) {
   const plan = getSubscriptionPlan(payload.planCode);
@@ -877,6 +919,7 @@ function validateSignupPayload(
   const termsAccepted = payload.termsAccepted === true;
   const requirePassword = options.requirePassword !== false;
   const acceptanceKind = options.acceptanceKind ?? "signup";
+  const requireTermsAccepted = options.requireTermsAccepted !== false;
 
   if (agencyName.length < 2) {
     throw new BillingValidationError("Informe o nome da agencia.");
@@ -932,13 +975,16 @@ function validateSignupPayload(
     throw new BillingValidationError("Informe a UF com 2 caracteres.");
   }
 
-  if (!termsAccepted) {
+  if (requireTermsAccepted && !termsAccepted) {
     throw new BillingValidationError(
       "Voce precisa aceitar os termos para continuar."
     );
   }
 
-  if (!isBillingLegalAcceptanceValid(acceptanceKind, payload.termsAcceptance)) {
+  if (
+    requireTermsAccepted &&
+    !isBillingLegalAcceptanceValid(acceptanceKind, payload.termsAcceptance)
+  ) {
     throw new BillingValidationError(
       "Os termos foram atualizados ou o aceite nao foi confirmado corretamente. Revise o documento e aceite novamente."
     );
