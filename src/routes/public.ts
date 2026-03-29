@@ -2,6 +2,10 @@ import { Router, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { ensureAgencySubscriptionAccess } from "../modules/billing/subscriptionAccess";
+import {
+  sendSupportContactEmail,
+  SupportValidationError,
+} from "../modules/support/support.service";
 
 export const publicRouter = Router();
 
@@ -63,5 +67,34 @@ publicRouter.get("/vouchers/:publicCode", async (req: Request, res: Response) =>
   } catch (err) {
     console.error("[PUBLIC] erro:", err);
     return res.status(500).json({ message: "Erro interno" });
+  }
+});
+
+publicRouter.post("/support/contact", async (req: Request, res: Response) => {
+  try {
+    await sendSupportContactEmail({
+      email: req.body?.email,
+      message: req.body?.message,
+      ip: req.ip,
+      origin:
+        typeof req.headers.origin === "string" ? req.headers.origin : undefined,
+      userAgent:
+        typeof req.headers["user-agent"] === "string"
+          ? req.headers["user-agent"]
+          : undefined,
+    });
+
+    return res.status(202).json({
+      message: "Mensagem enviada com sucesso. Responderemos pelo email informado.",
+    });
+  } catch (err) {
+    if (err instanceof SupportValidationError) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    console.error("[PUBLIC] support contact error:", err);
+    return res.status(500).json({
+      message: "Nao foi possivel enviar sua mensagem agora. Tente novamente em instantes.",
+    });
   }
 });

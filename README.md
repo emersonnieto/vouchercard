@@ -59,6 +59,8 @@ PUBLIC_VOUCHER_RATE_LIMIT_WINDOW_MS=300000
 PUBLIC_VOUCHER_RATE_LIMIT_MAX=60
 SIGNUP_RATE_LIMIT_WINDOW_MS=3600000
 SIGNUP_RATE_LIMIT_MAX=10
+SUPPORT_RATE_LIMIT_WINDOW_MS=3600000
+SUPPORT_RATE_LIMIT_MAX=8
 SUBSCRIPTION_EXPIRATION_SWEEP_MS=900000
 ASAAS_API_URL=https://api-sandbox.asaas.com/v3
 ASAAS_API_KEY=seu_token_do_asaas
@@ -67,6 +69,12 @@ ASAAS_WEBHOOK_TOKEN=seu_token_de_webhook
 FRONTEND_APP_URL=http://localhost:5173
 SUPABASE_URL=https://seu-projeto.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=seu_service_role
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=enbtechsolutions@gmail.com
+SMTP_PASS=sua_senha_de_app_do_gmail
+SUPPORT_INBOX_EMAIL=enbtechsolutions@gmail.com
 OPENAI_API_KEY=sua_chave_da_openai
 OPENAI_VOUCHER_ITINERARY_MODEL=gpt-5-mini
 ```
@@ -104,6 +112,7 @@ npm run dev
 - `POST /auth/login`
 - `POST /auth/change-password`
 - `GET /public/vouchers/:publicCode`
+- `POST /public/support/contact`
 - `GET /admin/me`
 - `GET /admin/agencies`
 - `POST /admin/agencies`
@@ -127,6 +136,7 @@ npm run dev
 - Os rate limits usam Postgres como contagem compartilhada e fazem fallback local apenas em falha do store
 - `SUPERADMIN` so e reconhecido no login quando o email estiver em `SUPERADMIN_EMAILS`; criar usuario por agencia gera apenas `ADMIN`
 - `ASAAS_API_URL`, `ASAAS_CHECKOUT_BASE_URL` e `FRONTEND_APP_URL` devem ser configuradas explicitamente antes do deploy
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SUPPORT_INBOX_EMAIL` habilitam o envio direto da pagina de suporte para sua caixa de email
 - `DATABASE_URL` fica reservado para migrações e fluxos de sistema (`signup`, `webhook`, rate limit, sweeper)
 - `DATABASE_URL_APP` deve usar uma role sem `BYPASSRLS` para as rotas autenticadas do painel
 

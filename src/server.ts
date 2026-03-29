@@ -238,6 +238,11 @@ const signupRateLimitWindowMs = readPositiveIntEnv(
   60 * 60 * 1000
 );
 const signupRateLimitMax = readPositiveIntEnv("SIGNUP_RATE_LIMIT_MAX", 10);
+const supportRateLimitWindowMs = readPositiveIntEnv(
+  "SUPPORT_RATE_LIMIT_WINDOW_MS",
+  60 * 60 * 1000
+);
+const supportRateLimitMax = readPositiveIntEnv("SUPPORT_RATE_LIMIT_MAX", 8);
 const subscriptionExpirationSweepMs = readPositiveIntEnv(
   "SUBSCRIPTION_EXPIRATION_SWEEP_MS",
   15 * 60 * 1000
@@ -266,6 +271,19 @@ const signupRateLimit = createRateLimiter({
   keyPrefix: "public-signup",
   windowMs: signupRateLimitWindowMs,
   max: signupRateLimitMax,
+  keyFn: (req) => {
+    const email =
+      typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+    return `${req.ip}:${email}`;
+  },
+});
+
+const supportRateLimit = createRateLimiter({
+  keyPrefix: "public-support",
+  windowMs: supportRateLimitWindowMs,
+  max: supportRateLimitMax,
   keyFn: (req) => {
     const email =
       typeof req.body?.email === "string"
@@ -362,6 +380,7 @@ app.use("/auth", authRouter);
  * Ex: GET /public/vouchers/VC9A2K7M
  */
 app.use("/public/vouchers", publicVoucherRateLimit);
+app.use("/public/support/contact", supportRateLimit);
 app.use("/public", publicRouter);
 app.use("/public/billing/signup", signupRateLimit);
 app.use("/public/billing", billingRouter);
