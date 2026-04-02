@@ -64,7 +64,22 @@ model User {
   role         String   @default("ADMIN")
   createdAt    DateTime @default(now())
 
-  agency Agency @relation(fields: [agencyId], references: [id])
+  agency               Agency                @relation(fields: [agencyId], references: [id])
+  passwordResetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }
 
 model Voucher {

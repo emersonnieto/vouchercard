@@ -14,6 +14,13 @@ import {
   buildSubscriptionRenewalUrl,
   signRenewalAccessToken,
 } from "../modules/billing/renewal";
+import {
+  PasswordResetTokenError,
+  PasswordResetUnavailableError,
+  PasswordResetValidationError,
+  requestPasswordReset,
+  resetPasswordWithToken,
+} from "../modules/auth/passwordReset.service";
 
 export const authRouter = Router();
 
@@ -139,6 +146,54 @@ authRouter.post("/login", async (req, res) => {
       },
     });
   } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+});
+
+/**
+ * POST /auth/forgot-password
+ * body: { email: string }
+ */
+authRouter.post("/forgot-password", async (req, res) => {
+  try {
+    const result = await requestPasswordReset(req.body?.email);
+    return res.json(result);
+  } catch (e) {
+    if (e instanceof PasswordResetValidationError) {
+      return res.status(400).json({ message: e.message });
+    }
+
+    if (e instanceof PasswordResetUnavailableError) {
+      return res.status(503).json({
+        message: "Recuperacao de senha indisponivel no momento.",
+      });
+    }
+
+    console.error(e);
+    return res.status(500).json({ message: "Erro interno" });
+  }
+});
+
+/**
+ * POST /auth/reset-password
+ * body: { token: string, newPassword: string }
+ */
+authRouter.post("/reset-password", async (req, res) => {
+  try {
+    const result = await resetPasswordWithToken({
+      token: req.body?.token,
+      newPassword: req.body?.newPassword,
+    });
+    return res.json(result);
+  } catch (e) {
+    if (
+      e instanceof PasswordResetValidationError ||
+      e instanceof PasswordResetTokenError
+    ) {
+      return res.status(400).json({ message: e.message });
+    }
+
     console.error(e);
     return res.status(500).json({ message: "Erro interno" });
   }

@@ -373,6 +373,8 @@ app.get("/health", async (req: Request, res: Response) => {
  * 🔐 Rotas públicas de autenticação
  */
 app.use("/auth/login", loginRateLimit);
+app.use("/auth/forgot-password", loginRateLimit);
+app.use("/auth/reset-password", loginRateLimit);
 app.use("/auth", authRouter);
 
 /**

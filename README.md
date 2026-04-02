@@ -67,6 +67,7 @@ ASAAS_API_KEY=seu_token_do_asaas
 ASAAS_CHECKOUT_BASE_URL=https://sandbox.asaas.com/checkoutSession/show/
 ASAAS_WEBHOOK_TOKEN=seu_token_de_webhook
 FRONTEND_APP_URL=http://localhost:5173
+ADMIN_APP_URL=http://localhost:5174
 SUPABASE_URL=https://seu-projeto.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=seu_service_role
 SMTP_HOST=smtp.gmail.com
@@ -75,6 +76,7 @@ SMTP_SECURE=true
 SMTP_USER=enbtechsolutions@gmail.com
 SMTP_PASS=sua_senha_de_app_do_gmail
 SUPPORT_INBOX_EMAIL=enbtechsolutions@gmail.com
+PASSWORD_RESET_TOKEN_TTL_MS=1800000
 OPENAI_API_KEY=sua_chave_da_openai
 OPENAI_VOUCHER_ITINERARY_MODEL=gpt-5-mini
 ```
@@ -110,6 +112,8 @@ npm run dev
 ## Rotas principais
 
 - `POST /auth/login`
+- `POST /auth/forgot-password`
+- `POST /auth/reset-password`
 - `POST /auth/change-password`
 - `GET /public/vouchers/:publicCode`
 - `POST /public/support/contact`
@@ -135,8 +139,9 @@ npm run dev
 - `TRUST_PROXY=true` e recomendado quando a API fica atras de proxy/load balancer
 - Os rate limits usam Postgres como contagem compartilhada e fazem fallback local apenas em falha do store
 - `SUPERADMIN` so e reconhecido no login quando o email estiver em `SUPERADMIN_EMAILS`; criar usuario por agencia gera apenas `ADMIN`
-- `ASAAS_API_URL`, `ASAAS_CHECKOUT_BASE_URL` e `FRONTEND_APP_URL` devem ser configuradas explicitamente antes do deploy
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SUPPORT_INBOX_EMAIL` habilitam o envio direto da pagina de suporte para sua caixa de email
+- `ASAAS_API_URL`, `ASAAS_CHECKOUT_BASE_URL`, `FRONTEND_APP_URL` e `ADMIN_APP_URL` devem ser configuradas explicitamente antes do deploy
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `SUPPORT_INBOX_EMAIL` habilitam o envio direto da pagina de suporte para sua caixa de email e a recuperacao de senha do admin
+- `PASSWORD_RESET_TOKEN_TTL_MS` define em milissegundos por quanto tempo o link de recuperacao permanece valido; o padrao e 30 minutos
 - `DATABASE_URL` fica reservado para migrações e fluxos de sistema (`signup`, `webhook`, rate limit, sweeper)
 - `DATABASE_URL_APP` deve usar uma role sem `BYPASSRLS` para as rotas autenticadas do painel
 
