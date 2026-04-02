@@ -200,6 +200,8 @@ export async function requestPasswordReset(emailInput: unknown) {
       expiresInMinutes: Math.max(1, Math.floor(tokenTtlMs / 60000)),
     });
   } catch (error) {
+    console.error("[AUTH] password reset email failed:", error);
+
     await prisma.passwordResetToken
       .delete({
         where: { id: createdToken.id },

@@ -165,6 +165,7 @@ authRouter.post("/forgot-password", async (req, res) => {
     }
 
     if (e instanceof PasswordResetUnavailableError) {
+      console.error("[AUTH] forgot-password unavailable:", e.message);
       return res.status(503).json({
         message: "Recuperacao de senha indisponivel no momento.",
       });
@@ -194,6 +195,7 @@ authRouter.post("/reset-password", async (req, res) => {
       return res.status(400).json({ message: e.message });
     }
 
+    console.error("[AUTH] reset-password failed:", e);
     console.error(e);
     return res.status(500).json({ message: "Erro interno" });
   }
