@@ -247,6 +247,14 @@ const subscriptionExpirationSweepMs = readPositiveIntEnv(
   "SUBSCRIPTION_EXPIRATION_SWEEP_MS",
   15 * 60 * 1000
 );
+const subscriptionExpirationSweepRetryDelayMs = readPositiveIntEnv(
+  "SUBSCRIPTION_EXPIRATION_SWEEP_RETRY_DELAY_MS",
+  5000
+);
+const subscriptionExpirationSweepRetryMaxAttempts = readPositiveIntEnv(
+  "SUBSCRIPTION_EXPIRATION_SWEEP_RETRY_MAX_ATTEMPTS",
+  2
+);
 
 const loginRateLimit = createRateLimiter({
   keyPrefix: "login",
@@ -369,6 +377,12 @@ app.get("/health", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/robots.txt", (req: Request, res: Response) => {
+  res.type("text/plain");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send("User-agent: *\nDisallow: /\n");
+});
+
 /**
  * 🔐 Rotas públicas de autenticação
  */
@@ -403,10 +417,63 @@ app.use((req: Request, res: Response) => {
 
 const PORT = Number(process.env.PORT) || 3333;
 
+function isTimeoutError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code =
+    "code" in error && typeof error.code === "string" ? error.code : "";
+  const message =
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : "";
+
+  return (
+    code.toUpperCase() === "ETIMEDOUT" ||
+    /\bETIMEDOUT\b/i.test(message) ||
+    /timed out/i.test(message)
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runSubscriptionExpirationSweepWithRetry() {
+  let lastError: unknown;
+
+  for (
+    let attempt = 1;
+    attempt <= subscriptionExpirationSweepRetryMaxAttempts;
+    attempt += 1
+  ) {
+    try {
+      return await deactivateExpiredSubscriptions();
+    } catch (error) {
+      lastError = error;
+
+      if (
+        !isTimeoutError(error) ||
+        attempt === subscriptionExpirationSweepRetryMaxAttempts
+      ) {
+        break;
+      }
+
+      console.warn(
+        `[BILLING] sweep de expiracao tomou timeout na tentativa ${attempt}/${subscriptionExpirationSweepRetryMaxAttempts}; tentando novamente em ${subscriptionExpirationSweepRetryDelayMs}ms.`
+      );
+      await wait(subscriptionExpirationSweepRetryDelayMs);
+    }
+  }
+
+  throw lastError;
+}
+
 function startSubscriptionExpirationSweep() {
   const runSweep = async () => {
     try {
-      const result = await deactivateExpiredSubscriptions();
+      const result = await runSubscriptionExpirationSweepWithRetry();
       if (result.expiredSubscriptions > 0) {
         console.info(
           `[BILLING] ${result.expiredSubscriptions} assinatura(s) expiradas e desativadas automaticamente.`

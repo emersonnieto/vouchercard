@@ -200,6 +200,7 @@ model AgencySubscription {
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
 
   @@index([agencyId, createdAt])
+  @@index([status, agencyId, activatedAt, createdAt])
   @@index([providerCustomerId])
   @@index([providerSubscriptionId])
 }
