@@ -11,6 +11,7 @@ const {
   resolveLoginUserRole,
 } = require("../src/auth/userRoles");
 const { requireAuth } = require("../src/middlewares/requireAuth");
+const { AUTH_COOKIE_NAME } = require("../src/auth/sessionCookie");
 const { requireRole } = require("../src/middlewares/requireRole");
 const {
   resolveOwnedAgencyId,
@@ -176,6 +177,70 @@ test("resolveVoucherAgencyId falls back to token agency for SUPERADMIN when no e
   });
 
   assert.equal(agencyId, "agency-from-token");
+});
+
+test("requireAuth accepts valid HttpOnly session cookie and hydrates req.user", async () => {
+  const token = signJwt({
+    userId: "user-cookie",
+    agencyId: "agency-cookie",
+    role: "SUPERADMIN",
+  });
+  const req = {
+    user: undefined,
+    header(name) {
+      return name === "cookie" ? `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}` : undefined;
+    },
+  };
+  const res = createResponseRecorder();
+  let calledNext = false;
+
+  await requireAuth(req, res, () => {
+    calledNext = true;
+  });
+
+  assert.equal(calledNext, true);
+  assert.deepEqual(req.user, {
+    userId: "user-cookie",
+    agencyId: "agency-cookie",
+    role: "SUPERADMIN",
+  });
+});
+
+test("requireAuth rejects unsafe cookie-auth requests from untrusted origins", async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  const token = signJwt({
+    userId: "user-csrf",
+    agencyId: "agency-csrf",
+    role: "SUPERADMIN",
+  });
+  const req = {
+    method: "POST",
+    user: undefined,
+    header(name) {
+      if (name === "cookie") return `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`;
+      if (name === "origin") return "https://evil.example";
+      return undefined;
+    },
+  };
+  const res = createResponseRecorder();
+  let calledNext = false;
+
+  try {
+    await requireAuth(req, res, () => {
+      calledNext = true;
+    });
+  } finally {
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+  }
+
+  assert.equal(calledNext, false);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.body, { message: "Origem nao permitida" });
 });
 
 test("resolveOwnedAgencyId allows ADMIN to manage the agency from the token", () => {

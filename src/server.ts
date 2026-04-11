@@ -12,6 +12,7 @@ import { deactivateExpiredSubscriptions } from "./modules/billing/subscriptionAc
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+const CORS_FORBIDDEN_ERROR = "CORS_FORBIDDEN";
 
 
 type RateLimitOptions = {
@@ -334,7 +335,7 @@ app.use(
         return;
       }
 
-      callback(new Error("Origem nao permitida pelo CORS"));
+      callback(new Error(CORS_FORBIDDEN_ERROR));
     },
     credentials: true,
   })
@@ -407,6 +408,24 @@ app.post("/webhooks/asaas", handleAsaasWebhook);
  * 🔒 Rotas administrativas (painel) protegidas por JWT
  */
 app.use("/admin", requireAuth, adminRouter);
+
+app.use(
+  (
+    error: unknown,
+    _req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    if (
+      error instanceof Error &&
+      error.message === CORS_FORBIDDEN_ERROR
+    ) {
+      return res.status(403).json({ message: "Origem nao permitida pelo CORS" });
+    }
+
+    return next(error);
+  }
+);
 
 /**
  * 🚫 404 padrão

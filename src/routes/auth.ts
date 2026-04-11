@@ -21,6 +21,7 @@ import {
   requestPasswordReset,
   resetPasswordWithToken,
 } from "../modules/auth/passwordReset.service";
+import { clearAuthCookie, setAuthCookie } from "../auth/sessionCookie";
 
 export const authRouter = Router();
 
@@ -134,8 +135,9 @@ authRouter.post("/login", async (req, res) => {
       role,
     });
 
+    setAuthCookie(res, token);
+
     return res.json({
-      token,
       user: {
         id: user.id,
         agencyId: user.agencyId,
@@ -149,6 +151,14 @@ authRouter.post("/login", async (req, res) => {
     console.error(e);
     return res.status(500).json({ message: "Erro interno" });
   }
+});
+
+/**
+ * POST /auth/logout
+ */
+authRouter.post("/logout", async (_req, res) => {
+  clearAuthCookie(res);
+  return res.json({ message: "Logout realizado com sucesso" });
 });
 
 /**
