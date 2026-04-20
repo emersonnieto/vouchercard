@@ -5,6 +5,7 @@ import { AsaasApiError, AsaasClient } from "./asaas.client";
 import {
   generatePublicToken,
   isValidCpfCnpj,
+  addDays,
   mapAsaasEventToStatus,
   normalizeEmail,
   normalizePhone,
@@ -28,6 +29,8 @@ import {
   isBillingLegalAcceptanceValid,
 } from "./legalDocuments";
 import { getSubscriptionAccessEndsAt } from "./subscriptionAccess";
+
+const SIGNUP_FREE_TRIAL_DAYS = 7;
 
 export type SignupPayload = {
   planCode?: string;
@@ -106,6 +109,7 @@ type SubscriptionSummaryRecord = {
   price: Prisma.Decimal;
   currency: string;
   activatedAt: Date | null;
+  trialEndsAt: Date | null;
   canceledAt: Date | null;
   providerSubscriptionId: string | null;
 };
@@ -126,10 +130,12 @@ export type AgencySubscriptionSummary = {
   price: number;
   currency: string;
   activatedAt: Date | null;
+  trialEndsAt: Date | null;
   canceledAt: Date | null;
   accessEndsAt: Date | null;
   cancelAtPeriodEnd: boolean;
   canCancel: boolean;
+  isTrial: boolean;
 };
 
 export function getPublicPlans() {
@@ -340,6 +346,138 @@ export async function createAgencySignup(
     }
   }
 
+  const sessionToken = generatePublicToken();
+
+  if (!renewalAccess) {
+    if (existingUser) {
+      throw new BillingValidationError(SIGNUP_EMAIL_IN_USE_MESSAGE);
+    }
+
+    const existingAgencyWithDocument = await prisma.agency.findFirst({
+      where: { document: valid.cpfCnpj },
+      select: { id: true },
+    });
+
+    if (existingAgencyWithDocument) {
+      throw new BillingValidationError(
+        "Ja existe uma agencia cadastrada com este CPF ou CNPJ."
+      );
+    }
+
+    if (!passwordHash) {
+      throw new BillingValidationError("A senha precisa ter no minimo 8 caracteres.");
+    }
+
+    let agencyId = "";
+    const now = new Date();
+    const trialEndsAt = addDays(now, SIGNUP_FREE_TRIAL_DAYS);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const slug = await generateUniqueAgencySlug(tx, valid.agencyName);
+        const agency = await tx.agency.create({
+          data: {
+            name: valid.agencyName,
+            slug,
+            phone: valid.phone,
+            email: valid.email,
+            contactName: valid.contactName,
+            document: valid.cpfCnpj,
+            postalCode: normalizedAddress.postalCode,
+            street: normalizedAddress.address,
+            addressNumber: valid.addressNumber,
+            complement: valid.complement,
+            neighborhood: normalizedAddress.neighborhood,
+            city: normalizedAddress.city,
+            state: normalizedAddress.state,
+            website: valid.website,
+            isActive: true,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        agencyId = agency.id;
+
+        await tx.user.create({
+          data: {
+            agencyId: agency.id,
+            name: valid.contactName,
+            email: valid.email,
+            passwordHash,
+            role: "ADMIN",
+          },
+        });
+
+        const subscription = await tx.agencySubscription.create({
+          data: {
+            agencyId,
+            publicToken: sessionToken,
+            provider: "TRIAL",
+            plan: valid.plan.code,
+            status: SubscriptionStatus.ACTIVE,
+            billingCycleMonths: valid.plan.billingCycleMonths,
+            commitmentMonths: valid.plan.commitmentMonths,
+            price: new Prisma.Decimal(0),
+            currency: "BRL",
+            activatedAt: now,
+            trialEndsAt,
+            lastEventAt: now,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        await tx.billingLegalAcceptance.create({
+          data: {
+            kind: acceptanceKind.toUpperCase(),
+            email: valid.email,
+            agencyId,
+            subscriptionId: subscription.id,
+            publicToken: sessionToken,
+            statementText: valid.acceptedLegalBundle.statement,
+            statementHash: valid.acceptedLegalBundle.statementHash,
+            termsTitle: valid.acceptedLegalBundle.document.title,
+            termsVersion: valid.acceptedLegalBundle.document.version,
+            termsHash: valid.acceptedLegalBundle.document.hash,
+            termsText: valid.acceptedLegalBundle.document.body,
+            // Kept duplicated for backward compatibility with the current table shape.
+            privacyTitle: valid.acceptedLegalBundle.document.title,
+            privacyVersion: valid.acceptedLegalBundle.document.version,
+            privacyHash: valid.acceptedLegalBundle.document.hash,
+            privacyText: valid.acceptedLegalBundle.document.body,
+            bundleHash: valid.acceptedLegalBundle.bundleHash,
+            ipAddress: requestMeta.ipAddress,
+            userAgent: requestMeta.userAgent,
+            acceptLanguage: requestMeta.acceptLanguage,
+            requestPath: requestMeta.requestPath,
+            origin: requestMeta.origin,
+            referer: requestMeta.referer,
+          },
+        });
+      });
+    } catch (error) {
+      if (isUserEmailUniqueConstraintError(error)) {
+        throw new BillingValidationError(SIGNUP_EMAIL_IN_USE_MESSAGE);
+      }
+
+      throw error;
+    }
+
+    return {
+      sessionToken,
+      checkoutUrl: null,
+      checkoutId: null,
+      loginEmail: valid.email,
+      agencyId,
+      trialEndsAt,
+      expiresAt: trialEndsAt,
+      isTrial: true,
+    };
+  }
+
   const cityCode = await resolveIbgeCityCode({
     city: normalizedAddress.city,
     state: normalizedAddress.state,
@@ -350,8 +488,6 @@ export async function createAgencySignup(
       "Nao foi possivel identificar a cidade da agencia. Revise cidade e UF."
     );
   }
-
-  const sessionToken = generatePublicToken();
 
   try {
     const checkout = await getAsaasClient().createRecurringCheckout({
@@ -578,6 +714,12 @@ export async function prevalidateAgencySignup(payload: SignupPayload) {
   });
   const normalizedAddress = await normalizeSignupAddress(valid);
 
+  if (!renewalAccess) {
+    return {
+      ok: true as const,
+    };
+  }
+
   const cityCode = await resolveIbgeCityCode({
     city: normalizedAddress.city,
     state: normalizedAddress.state,
@@ -624,6 +766,7 @@ export async function getSignupSession(publicToken: string) {
       providerCheckoutId: true,
       checkoutExpiresAt: true,
       activatedAt: true,
+      trialEndsAt: true,
       createdAt: true,
       agency: {
         select: {
@@ -654,6 +797,7 @@ export async function getSignupSession(publicToken: string) {
           providerCheckoutId: true,
           checkoutExpiresAt: true,
           activatedAt: true,
+          trialEndsAt: true,
           createdAt: true,
           agency: {
             select: {
@@ -680,8 +824,10 @@ export async function getSignupSession(publicToken: string) {
     sessionToken: subscription.publicToken,
     status: subscription.status,
     activatedAt: subscription.activatedAt,
+    trialEndsAt: subscription.trialEndsAt,
     checkoutExpiresAt: subscription.checkoutExpiresAt,
     createdAt: subscription.createdAt,
+    isTrial: !!subscription.trialEndsAt,
     checkoutUrl: normalizeCheckoutUrl(
       subscription.checkoutUrl,
       subscription.providerCheckoutId
@@ -1179,6 +1325,7 @@ const subscriptionSummarySelect = {
   price: true,
   currency: true,
   activatedAt: true,
+  trialEndsAt: true,
   canceledAt: true,
   providerSubscriptionId: true,
 } as const;
@@ -1210,26 +1357,34 @@ function mapAgencySubscriptionSummary(
         activatedAt: subscription.activatedAt,
         billingCycleMonths: subscription.billingCycleMonths,
         commitmentMonths: subscription.commitmentMonths,
+        trialEndsAt: subscription.trialEndsAt,
         canceledAt: subscription.canceledAt,
       })
     : null;
+  const isTrial = !!subscription.trialEndsAt || subscription.provider === "TRIAL";
 
   return {
     id: subscription.id,
     provider: subscription.provider,
     planCode: subscription.plan,
-    planName: plan?.name ?? subscription.plan,
+    planName: isTrial
+      ? `Teste gratis - ${plan?.name ?? subscription.plan}`
+      : plan?.name ?? subscription.plan,
     status: subscription.status,
     billingCycleMonths: subscription.billingCycleMonths,
     commitmentMonths: subscription.commitmentMonths,
     price: Number(subscription.price),
     currency: subscription.currency,
     activatedAt: subscription.activatedAt,
+    trialEndsAt: subscription.trialEndsAt,
     canceledAt: subscription.canceledAt,
     accessEndsAt,
     cancelAtPeriodEnd: !!subscription.canceledAt,
     canCancel:
-      subscription.status === SubscriptionStatus.ACTIVE && !subscription.canceledAt,
+      subscription.provider === "ASAAS" &&
+      subscription.status === SubscriptionStatus.ACTIVE &&
+      !subscription.canceledAt,
+    isTrial,
   };
 }
 

@@ -27,14 +27,14 @@ export type SubmittedBillingLegalAcceptance = {
   bundleHash?: string;
 };
 
-const LEGAL_DOCUMENT_VERSION = "2026-03-26";
+const LEGAL_DOCUMENT_VERSION = "2026-04-20";
 const TERMS_PUBLIC_URL = "https://termosdeuso.vouchercard.com.br/";
 const TERMS_PUBLIC_URL_TEXT = "termosdeuso.vouchercard.com.br";
 
 const TERMS_OF_USE_TITLE = "Termos de Uso e Contratacao - VoucherCard";
 
 const SIGNUP_ACCEPTANCE_STATEMENT =
-  "Li e concordo com os Termos de Uso e Contratacao do VoucherCard, incluindo as disposicoes de privacidade e a autorizacao para inicio da assinatura recorrente.";
+  "Li e concordo com os Termos de Uso e Contratacao do VoucherCard, incluindo as disposicoes de privacidade, o periodo de teste gratis e as regras para contratacao posterior da assinatura recorrente.";
 
 const RENEWAL_ACCEPTANCE_STATEMENT =
   "Li e concordo com os Termos de Uso e Contratacao do VoucherCard, incluindo as disposicoes de privacidade e a autorizacao para renovacao da assinatura recorrente.";
@@ -42,7 +42,7 @@ const RENEWAL_ACCEPTANCE_STATEMENT =
 const TERMS_OF_USE_BODY = normalizeLegalText(`
 # TERMOS DE USO E CONTRATACAO DA PLATAFORMA VOUCHERCARD
 
-Ultima atualizacao: 26 de marco de 2026
+Ultima atualizacao: 20 de abril de 2026
 
 Estes Termos de Uso e Contratacao ("Termos") regulam o acesso e uso da plataforma VoucherCard, disponibilizada por ENBTECHSOLUTIONS, com operacao comercial vinculada a vouchercard.com.br, inscrita no CNPJ sob o n. 65.547.113/0001-57, com sede em Rua Jose Vicente Arantes L33, Pederneiras/SP, doravante denominada "VoucherCard" ou "CONTRATADA".
 
@@ -117,19 +117,20 @@ Se voce nao concordar com estes Termos, nao deve utilizar a plataforma.
 
 5.2. Os valores, caracteristicas e condicoes comerciais dos planos poderao ser divulgados na pagina de contratacao, checkout, proposta comercial, painel ou outro ambiente oficial da plataforma.
 
-5.3. A contratacao ocorre em ambiente online, com geracao de checkout de pagamento recorrente.
+5.3. Para novos cadastros, o VoucherCard podera liberar um periodo de teste gratis de 7 (sete) dias, sem cobranca inicial e sem exigencia de cartao no momento do cadastro.
 
 5.4. O fluxo de contratacao e, na pratica, o seguinte:
 
 1. o usuario preenche os dados da agencia e escolhe um plano;
-2. a plataforma gera um checkout de pagamento recorrente;
-3. o pagamento e processado pelo parceiro de cobranca;
-4. o acesso da agencia so e liberado apos a confirmacao do pagamento;
-5. confirmada a cobranca, a assinatura passa a vigorar e a conta e habilitada para uso.
+2. a plataforma libera o acesso inicial durante o periodo de teste gratis, quando essa condicao estiver disponivel;
+3. ao fim do teste gratis, o acesso podera ser bloqueado caso nao haja contratacao paga;
+4. para contratar ou renovar apos o teste, a plataforma gera um checkout de pagamento recorrente;
+5. o pagamento e processado pelo parceiro de cobranca;
+6. confirmada a cobranca, a assinatura paga passa a vigorar e a conta permanece habilitada para uso.
 
-5.5. Nao ha, por padrao, periodo de uso gratuito com pagamento posterior, salvo se o VoucherCard divulgar promocao especifica por escrito.
+5.5. O teste gratis nao gera cobranca automatica. Para continuar usando apos o periodo gratuito, o contratante devera concluir a contratacao paga no checkout disponibilizado pela plataforma.
 
-5.6. O simples cadastro, a geracao do checkout ou o preenchimento dos dados nao garantem ativacao da conta sem a efetiva confirmacao do pagamento.
+5.6. O periodo de teste gratis pode ser oferecido apenas uma vez por agencia, email, CPF/CNPJ ou dados cadastrais equivalentes, a criterio do VoucherCard, para evitar abuso, fraude ou uso indevido.
 
 5.7. A cobranca recorrente e atualmente estruturada por meio de parceiro de pagamento integrado a plataforma, podendo o VoucherCard alterar esse parceiro a qualquer tempo.
 
@@ -385,10 +386,10 @@ Dados tecnicos:
 
 ## B. Fluxo atual de cobranca que estes Termos refletem
 
-- a contratacao gera um checkout recorrente;
-- o cliente paga primeiro;
-- o acesso e liberado apenas depois da confirmacao do pagamento;
-- nao existe, por padrao, uso de 30 dias antes de pagar;
+- novos cadastros podem receber 7 dias de teste gratis sem cartao;
+- o teste gratis nao gera cobranca automatica;
+- para continuar apos o teste, a contratacao ou renovacao gera um checkout recorrente;
+- a assinatura paga e liberada ou renovada depois da confirmacao do pagamento;
 - se a renovacao nao for confirmada ou a recorrencia for cancelada, o acesso permanece apenas ate o fim do ciclo vigente e depois pode ser bloqueado.
 
 ## C. Categorias de terceiros atualmente envolvidas

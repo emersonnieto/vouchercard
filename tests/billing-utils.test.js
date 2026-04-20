@@ -109,6 +109,20 @@ test("getSubscriptionAccessEndsAt uses the next billing cycle after cancellation
   assert.equal(accessEndsAt.toISOString(), "2026-04-10T12:00:00.000Z");
 });
 
+test("getSubscriptionAccessEndsAt can end access on the free trial date", () => {
+  const activatedAt = new Date("2026-04-20T12:00:00.000Z");
+  const trialEndsAt = new Date("2026-04-27T12:00:00.000Z");
+
+  const accessEndsAt = getSubscriptionAccessEndsAt({
+    activatedAt,
+    billingCycleMonths: 1,
+    commitmentMonths: 1,
+    trialEndsAt,
+  });
+
+  assert.equal(accessEndsAt.toISOString(), "2026-04-27T12:00:00.000Z");
+});
+
 test("hasSubscriptionAccessReachedEnd expires canceled subscriptions at the end of the paid cycle", () => {
   const activatedAt = new Date("2026-01-10T12:00:00.000Z");
   const canceledAt = new Date("2026-03-17T09:30:00.000Z");

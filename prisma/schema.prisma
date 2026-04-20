@@ -192,6 +192,7 @@ model AgencySubscription {
   latestPaymentId        String?
   checkoutExpiresAt      DateTime?
   activatedAt            DateTime?
+  trialEndsAt            DateTime?
   canceledAt             DateTime?
   lastEventAt            DateTime?
   createdAt              DateTime           @default(now())
@@ -201,6 +202,7 @@ model AgencySubscription {
 
   @@index([agencyId, createdAt])
   @@index([status, agencyId, activatedAt, createdAt])
+  @@index([status, trialEndsAt])
   @@index([providerCustomerId])
   @@index([providerSubscriptionId])
 }

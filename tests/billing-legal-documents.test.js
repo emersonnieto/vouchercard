@@ -11,8 +11,8 @@ test("getCurrentBillingLegalDocuments returns the current signup bundle", () => 
 
   assert.equal(bundle.kind, "signup");
   assert.equal(typeof bundle.statement, "string");
-  assert.ok(bundle.statement.includes("inicio da assinatura recorrente"));
-  assert.equal(bundle.document.version, "2026-03-26");
+  assert.ok(bundle.statement.includes("periodo de teste gratis"));
+  assert.equal(bundle.document.version, "2026-04-20");
   assert.equal(bundle.document.publicUrl, "https://termosdeuso.vouchercard.com.br/");
   assert.equal(bundle.document.hash.length, 64);
   assert.equal(bundle.bundleHash.length, 64);

@@ -16,6 +16,7 @@ type SubscriptionAccessSnapshot = {
   agencyId: string;
   plan: SubscriptionPlanCode;
   activatedAt: Date | null;
+  trialEndsAt: Date | null;
   billingCycleMonths: number;
   commitmentMonths: number;
   canceledAt: Date | null;
@@ -52,15 +53,17 @@ export function getSubscriptionAccessEndsAt(input: {
   activatedAt: Date;
   billingCycleMonths: number;
   commitmentMonths: number;
+  trialEndsAt?: Date | null;
   canceledAt?: Date | null;
 }) {
   const commitmentEndsAt = getSubscriptionExpiresAt(
     input.activatedAt,
     input.commitmentMonths
   );
+  const scheduledEndsAt = input.trialEndsAt ?? commitmentEndsAt;
 
   if (!input.canceledAt) {
-    return commitmentEndsAt;
+    return scheduledEndsAt;
   }
 
   const nextBillingDate = getNextSubscriptionBillingDate(
@@ -69,9 +72,9 @@ export function getSubscriptionAccessEndsAt(input: {
     input.canceledAt
   );
 
-  return nextBillingDate.getTime() <= commitmentEndsAt.getTime()
+  return nextBillingDate.getTime() <= scheduledEndsAt.getTime()
     ? nextBillingDate
-    : commitmentEndsAt;
+    : scheduledEndsAt;
 }
 
 export function hasSubscriptionReachedEnd(
@@ -87,6 +90,7 @@ export function hasSubscriptionAccessReachedEnd(
     activatedAt: Date;
     billingCycleMonths: number;
     commitmentMonths: number;
+    trialEndsAt?: Date | null;
     canceledAt?: Date | null;
   },
   now: Date = new Date()
@@ -126,6 +130,7 @@ export async function ensureAgencySubscriptionAccess(
         agencyId: true,
         plan: true,
         activatedAt: true,
+        trialEndsAt: true,
         billingCycleMonths: true,
         commitmentMonths: true,
         canceledAt: true,
@@ -142,6 +147,7 @@ export async function ensureAgencySubscriptionAccess(
         agencyId: true,
         plan: true,
         activatedAt: true,
+        trialEndsAt: true,
         billingCycleMonths: true,
         commitmentMonths: true,
         canceledAt: true,
@@ -175,6 +181,7 @@ export async function ensureAgencySubscriptionAccess(
     activatedAt: latestKnownSubscription.activatedAt,
     billingCycleMonths: latestKnownSubscription.billingCycleMonths,
     commitmentMonths: latestKnownSubscription.commitmentMonths,
+    trialEndsAt: latestKnownSubscription.trialEndsAt,
     canceledAt: latestKnownSubscription.canceledAt,
   });
 
@@ -204,6 +211,7 @@ export async function ensureAgencySubscriptionAccess(
         activatedAt: activeSubscription.activatedAt,
         billingCycleMonths: activeSubscription.billingCycleMonths,
         commitmentMonths: activeSubscription.commitmentMonths,
+        trialEndsAt: activeSubscription.trialEndsAt,
         canceledAt: activeSubscription.canceledAt,
       },
       now
@@ -247,6 +255,7 @@ export async function deactivateExpiredSubscriptions(
       agencyId: true,
       plan: true,
       activatedAt: true,
+      trialEndsAt: true,
       billingCycleMonths: true,
       commitmentMonths: true,
       canceledAt: true,
@@ -269,6 +278,7 @@ export async function deactivateExpiredSubscriptions(
           activatedAt: subscription.activatedAt,
           billingCycleMonths: subscription.billingCycleMonths,
           commitmentMonths: subscription.commitmentMonths,
+          trialEndsAt: subscription.trialEndsAt,
           canceledAt: subscription.canceledAt,
         },
         now
