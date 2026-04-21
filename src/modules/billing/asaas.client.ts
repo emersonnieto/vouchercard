@@ -302,7 +302,7 @@ function buildRecurringCheckoutPayload(input: {
     items: [
       {
         name: `VoucherCard ${input.plan.name}`,
-        description: `Assinatura ${input.plan.name} do VoucherCard`,
+        description: `Assinatura ${input.plan.name} do VoucherCard - cobranca mensal recorrente`,
         quantity: 1,
         value: input.plan.monthlyPrice,
       },

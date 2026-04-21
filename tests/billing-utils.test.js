@@ -44,7 +44,7 @@ test("getSubscriptionPlan resolves supported plans", () => {
   const annual = getSubscriptionPlan("annual");
 
   assert.equal(annual.code, "ANNUAL");
-  assert.equal(annual.monthlyPrice, 179.9);
+  assert.equal(annual.monthlyPrice, 49.9);
 });
 
 test("mapAsaasEventToStatus activates only successful payment events", () => {

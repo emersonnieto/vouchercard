@@ -18,7 +18,7 @@ const plans: SubscriptionPlanDefinition[] = [
     headline: "Comece rapido",
     description:
       "Plano flexivel para agencias que querem iniciar a operacao no VoucherCard sem fidelidade.",
-    monthlyPrice: 199.9,
+    monthlyPrice: 69.9,
     commitmentMonths: 1,
     billingCycleMonths: 1,
     asaasCycle: "MONTHLY",
@@ -29,7 +29,7 @@ const plans: SubscriptionPlanDefinition[] = [
     headline: "Escala com desconto",
     description:
       "Valor promocional mensal para agencias em crescimento com foco em previsibilidade.",
-    monthlyPrice: 189.9,
+    monthlyPrice: 59.9,
     commitmentMonths: 6,
     billingCycleMonths: 1,
     asaasCycle: "MONTHLY",
@@ -40,7 +40,7 @@ const plans: SubscriptionPlanDefinition[] = [
     headline: "Melhor custo mensal",
     description:
       "Ideal para donos de agencia que querem vender com mais autoridade e escalar com o melhor custo mensal.",
-    monthlyPrice: 179.9,
+    monthlyPrice: 49.9,
     commitmentMonths: 12,
     billingCycleMonths: 1,
     asaasCycle: "MONTHLY",
