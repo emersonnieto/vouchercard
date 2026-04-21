@@ -145,6 +145,9 @@ npm run dev
 - `DATABASE_URL` fica reservado para migrações e fluxos de sistema (`signup`, `webhook`, rate limit, sweeper)
 - `DATABASE_URL_APP` deve usar uma role sem `BYPASSRLS` para as rotas autenticadas do painel
 
+- Para o bucket publico `agency-logos`, aplique [harden_agency_logos_bucket.sql](/c:/projetc_voucher/voucher-api/sql/harden_agency_logos_bucket.sql) no SQL Editor do Supabase para remover policies publicas amplas de leitura e escrita em `storage.objects` sem quebrar as URLs publicas das logos
+- Depois rode [verify_agency_logos_bucket.sql](/c:/projetc_voucher/voucher-api/sql/verify_agency_logos_bucket.sql) para confirmar que o bucket continua `public` e que nao restaram policies de `SELECT` expostas por engano
+
 Roteiro com IA:
 
 - `OPENAI_API_KEY` habilita a geracao automatica do roteiro sugestao por voucher; sem ela, o voucher continua sendo criado normalmente, apenas sem roteiro salvo
